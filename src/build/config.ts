@@ -42,6 +42,7 @@ export function createHolder(): ContextHolder {
 export function configPlugin(rawOptions: WPViteOptions, holder: ContextHolder): Plugin {
   return {
     name: 'wp-vite:config',
+    api: holder,
     async config(userConfig, env) {
       const root = userConfig.root ? path.resolve(userConfig.root) : process.cwd();
       const options = resolveOptions(rawOptions, root);

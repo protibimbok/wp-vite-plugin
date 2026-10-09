@@ -1,0 +1,86 @@
+import { createHash } from 'node:crypto';
+import type { Plugin, Rolldown } from 'vite';
+import type { ContextHolder } from './config.js';
+import type { EntryDeps } from '../context.js';
+import type { Entry } from '../discovery/entries.js';
+import { WPViteError } from '../errors.js';
+import { phpFile } from '../php/serialize.js';
+import { collectEntryDependencies, type ChunkGraphNode } from './deps.js';
+
+export function assetPhpSource(deps: EntryDeps): string {
+  if (deps.format === 'iife') return phpFile({ dependencies: deps.scripts, version: deps.version });
+  const dependencies = [
+    ...deps.modules.map((id) => ({ id, import: 'static' })),
+    ...deps.dynamicModules.map((id) => ({ id, import: 'dynamic' })),
+  ];
+  return phpFile({ dependencies, version: deps.version, type: 'module' });
+}
+
+export function assetsPlugin(holder: ContextHolder): Plugin {
+  return {
+    name: 'wp-vite:assets',
+    apply: 'build',
+
+    generateBundle(_, bundle) {
+      const ctx = holder.get();
+      const environment = this.environment.name;
+      const format = ctx.formatOf(environment);
+      const records = ctx.records.get(environment) ?? new Map();
+      const chunks = chunkGraph(bundle);
+
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type !== 'chunk' || !chunk.isEntry) continue;
+        const entry = ctx.discovery.entries.find((e) => e.name === chunk.name);
+        if (!entry) continue;
+
+        const css = cssFor(chunk, entry, bundle, format);
+        const deps: EntryDeps = {
+          name: entry.name,
+          file: chunk.fileName,
+          format,
+          ...collectEntryDependencies(chunks.get(chunk.fileName)!, chunks, records),
+          css,
+          version: versionOf(chunk, css, bundle),
+        };
+        checkModuleEntry(entry, deps, ctx.options.moduleClassicDeps, (message) => this.warn(message));
+        ctx.deps.set(entry.name, deps);
+        this.emitFile({ type: 'asset', fileName: `${entry.name}.asset.php`, source: assetPhpSource(deps) });
+      }
+    },
+  };
+}
+
+function chunkGraph(bundle: Rolldown.OutputBundle): Map<string, ChunkGraphNode> {
+  const chunks = new Map<string, ChunkGraphNode>();
+  for (const output of Object.values(bundle)) {
+    if (output.type === 'chunk') chunks.set(output.fileName, output);
+  }
+  return chunks;
+}
+
+function cssFor(chunk: Rolldown.OutputChunk, entry: Entry, bundle: Rolldown.OutputBundle, format: 'es' | 'iife'): string[] {
+  if (format === 'es') return [...(chunk.viteMetadata?.importedCss ?? [])];
+  const file = `${entry.name}.css`;
+  return file in bundle ? [file] : [];
+}
+
+function versionOf(chunk: Rolldown.OutputChunk, css: string[], bundle: Rolldown.OutputBundle): string {
+  const hash = createHash('sha1').update(chunk.code);
+  for (const file of css) {
+    const asset = bundle[file];
+    if (asset?.type === 'asset') hash.update(asset.source);
+  }
+  return hash.digest('hex').slice(0, 20);
+}
+
+function checkModuleEntry(entry: Entry, deps: EntryDeps, mode: 'error' | 'warn', warn: (message: string) => void): void {
+  if (deps.format !== 'es' || deps.scripts.length === 0) return;
+  const blockFields = entry.sources.filter((s) => s.field === 'viewScriptModule');
+  if (blockFields.length === 0) return;
+  const message =
+    `${entry.name} is a viewScriptModule of ${blockFields.map((s) => s.block).join(', ')} but depends on classic scripts ` +
+    `(${deps.scripts.join(', ')}); WordPress cannot load those for a script module registered from block.json. ` +
+    `Use script-module packages instead, or set moduleClassicDeps: 'warn' to accept the risk.`;
+  if (mode === 'error') throw new WPViteError(message);
+  warn(message);
+}

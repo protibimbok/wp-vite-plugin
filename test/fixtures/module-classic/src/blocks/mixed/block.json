@@ -1,0 +1,7 @@
+{
+  "apiVersion": 3,
+  "name": "fixture/mixed",
+  "title": "Mixed",
+  "category": "widgets",
+  "viewScriptModule": "file:./view.js"
+}
