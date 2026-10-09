@@ -1,4 +1,5 @@
 import type { Plugin } from 'vite';
+import type { ContextHolder } from '../build/config.js';
 import type { WPViteContext } from '../context.js';
 import { globalExpression } from './rewrite.js';
 import { rewriteExternals, type ExternalDeps } from './rewrite.js';
@@ -6,13 +7,14 @@ import { rewriteExternals, type ExternalDeps } from './rewrite.js';
 const VIRTUAL_PREFIX = '\0wp-vite:external:';
 const SCRIPT_RE = /\.(?:m|c)?[jt]sx?(?:$|\?)/;
 
-export function externalsPlugin(ctx: WPViteContext): Plugin {
+export function externalsPlugin(holder: ContextHolder): Plugin {
   return {
     name: 'wp-vite:externals',
     enforce: 'post',
 
     resolveId(source, importer) {
       if (!importer || !isBare(source)) return null;
+      const ctx = holder.get();
       const environment = this.environment?.name ?? 'client';
       const classification = ctx.classify(source, ctx.formatOf(environment));
       if (classification.kind === 'bundle') return null;
@@ -25,6 +27,7 @@ export function externalsPlugin(ctx: WPViteContext): Plugin {
 
     load(id) {
       if (!id.startsWith(VIRTUAL_PREFIX)) return null;
+      const ctx = holder.get();
       const classification = ctx.classify(id.slice(VIRTUAL_PREFIX.length), 'es');
       if (classification.kind !== 'global') return null;
       return `export default ${globalExpression(classification.global)};`;
@@ -34,6 +37,7 @@ export function externalsPlugin(ctx: WPViteContext): Plugin {
       filter: { code: /\b(?:import|export)\b/ },
       handler(code, id) {
         if (id.startsWith('\0') || !SCRIPT_RE.test(id)) return null;
+        const ctx = holder.get();
         const environment = this.environment?.name ?? 'client';
         const format = ctx.formatOf(environment);
         const result = rewriteExternals(code, id, (request) => ctx.classify(request, format));

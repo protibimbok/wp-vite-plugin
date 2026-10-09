@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { createServer } from 'vite';
 import { describe, expect, it } from 'vitest';
+import { createHolder } from '../src/build/config.js';
 import { createContext } from '../src/context.js';
 import { discoverEntries } from '../src/discovery/entries.js';
 import { createClassifier } from '../src/externals/classify.js';
@@ -105,8 +106,10 @@ o.useState; window.wp.element.useState;`);
 describe('externalsPlugin in dev', () => {
   it('rewrites user code and pre-bundled dependencies, and maps module externals to the dev origin', async () => {
     const options = resolveOptions({ entries: { entry: 'src/entry.js' }, blocks: false }, root);
+    const holder = createHolder();
     const ctx = createContext(options, await discoverEntries(options), true);
     ctx.devOrigin = 'http://127.0.0.1:5173';
+    holder.ctx = ctx;
     const server = await createServer({
       configFile: false,
       root,
@@ -114,7 +117,7 @@ describe('externalsPlugin in dev', () => {
       logLevel: 'silent',
       server: { port: 0, host: '127.0.0.1' },
       optimizeDeps: { include: ['fake-dep'], exclude: ['react', '@wordpress/element', '@wordpress/interactivity'], entries: ['src/entry.js'] },
-      plugins: [externalsPlugin(ctx)],
+      plugins: [externalsPlugin(holder)],
     });
     try {
       await server.listen();

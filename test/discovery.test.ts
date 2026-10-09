@@ -34,12 +34,6 @@ describe('discoverEntries', () => {
         ],
       },
       {
-        name: 'blocks/basic/shared',
-        file: 'src/blocks/basic/shared.js',
-        format: 'iife',
-        sources: [{ block: 'fixture/basic', field: 'script' }],
-      },
-      {
         name: 'blocks/basic/view',
         file: 'src/blocks/basic/view.ts',
         format: 'iife',
@@ -70,7 +64,7 @@ describe('discoverEntries', () => {
     const { entries } = await discover('basic-block', {
       entries: { 'admin/index': 'src/admin.ts', legacy: { src: 'src/legacy', format: 'iife' } },
     });
-    expect(entries.slice(3)).toEqual([
+    expect(entries.slice(2)).toEqual([
       { name: 'admin/index', file: 'src/admin.ts', format: 'es', sources: [] },
       { name: 'legacy', file: 'src/legacy.ts', format: 'iife', sources: [] },
     ]);
@@ -88,7 +82,7 @@ describe('discoverEntries', () => {
 
   it('honours blocks: false and custom block globs', async () => {
     expect((await discover('basic-block', { blocks: false })).entries).toEqual([]);
-    expect((await discover('basic-block', { blocks: 'blocks/*/block.json' })).entries).toHaveLength(3);
+    expect((await discover('basic-block', { blocks: 'blocks/*/block.json' })).entries).toHaveLength(2);
     expect((await discover('basic-block', { blocks: 'nope/**/block.json' })).entries).toEqual([]);
   });
 

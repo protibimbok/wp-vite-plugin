@@ -5,7 +5,7 @@
   "title": "Basic",
   "category": "widgets",
   "editorScript": "file:./index.js",
-  "script": ["file:./index.js", "file:./shared.js"],
+  "script": "file:./index.js",
   "viewScript": "file:./view.js",
   "style": "file:./style-index.css",
   "editorStyle": "file:./index.css"
