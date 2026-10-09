@@ -54,12 +54,14 @@ describe('build with style and editor CSS', () => {
       'admin/style-index.css',
       'blocks-manifest.php',
       'blocks/styled/block.json',
+      'blocks/styled/editor-rtl.css',
+      'blocks/styled/editor.css',
       'blocks/styled/index-rtl.css',
       'blocks/styled/index.asset.php',
       'blocks/styled/index.css',
       'blocks/styled/index.js',
-      'blocks/styled/style-index-rtl.css',
-      'blocks/styled/style-index.css',
+      'blocks/styled/style-rtl.css',
+      'blocks/styled/style.css',
       'settings/index.asset.php',
       'settings/index.js',
       'wp-vite.json',
@@ -75,22 +77,23 @@ describe('build with style and editor CSS', () => {
     expect(files.filter((f) => f.startsWith('images/'))).toEqual([expect.stringMatching(/^images\/icon-[\w-]+\.png$/)]);
   });
 
-  it('puts only style.* sources into style-index.css and resolves asset urls relative to it', async () => {
-    const style = await read('blocks/styled/style-index.css');
+  it('builds block.json stylesheets as their own files with asset urls relative to them', async () => {
+    const style = await read('blocks/styled/style.css');
     expect(style).toMatch(/^\.wp-block-fixture-styled\{background:url\(\.\.\/\.\.\/images\/icon-[\w-]+\.png\) 0 no-repeat;margin-left:1em\}\n$/);
-    const editor = await read('blocks/styled/index.css');
-    expect(editor).toMatch(
-      /^\.(_panel_\w+)\{float:left\}\.wp-block-fixture-styled\.is-selected\{background:url\(\.\.\/\.\.\/images\/icon-[\w-]+\.png\);padding-left:2px\}\n$/,
+    expect(await read('blocks/styled/editor.css')).toMatch(
+      /^\.wp-block-fixture-styled\.is-selected\{background:url\(\.\.\/\.\.\/images\/icon-[\w-]+\.png\);padding-left:2px\}\n$/,
     );
+    const editor = await read('blocks/styled/index.css');
+    expect(editor).toMatch(/^\.(_panel_\w+)\{float:left\}\n$/);
     expect(editor).not.toContain('$vite$');
     const className = /\.(_panel_\w+)\{/.exec(editor)![1];
     expect(await read('blocks/styled/index.js')).toContain(className);
   });
 
   it('flips the RTL variants', async () => {
-    expect(await read('blocks/styled/style-index-rtl.css')).toMatch(/background:url\([^)]+\) 100% no-repeat;margin-right:1em/);
+    expect(await read('blocks/styled/style-rtl.css')).toMatch(/background:url\([^)]+\) 100% no-repeat;margin-right:1em/);
     expect(await read('blocks/styled/index-rtl.css')).toContain('float:right');
-    expect(await read('blocks/styled/index-rtl.css')).toContain('padding-right:2px');
+    expect(await read('blocks/styled/editor-rtl.css')).toContain('padding-right:2px');
     expect(await read('admin/style-index-rtl.css')).toBe('.admin-front{right:0}\n');
   });
 
@@ -105,10 +108,26 @@ describe('build with style and editor CSS', () => {
     expect(ctx.deps.get('settings/index')).toMatchObject({ css: [admin.css[1]], styleCss: [admin.styleCss[1]] });
   });
 
-  it('records block CSS on the IIFE entry and hashes it into the version', async () => {
+  it('rewrites block.json style fields to the built CSS files and keeps them out of the manifest entries', async () => {
+    const json = JSON.parse(await read('blocks/styled/block.json'));
+    expect(json).toMatchObject({ editorScript: 'file:./index.js', style: 'file:./style.css', editorStyle: 'file:./editor.css' });
+    expect(ctx.deps.has('blocks/styled/style')).toBe(false);
+    expect(Object.keys(JSON.parse(await read('wp-vite.json')).entries)).toEqual(['blocks/styled/index', 'admin/index', 'settings/index']);
+  });
+
+  it('records only the script-imported CSS on the IIFE entry and hashes it into the version', async () => {
     const block = ctx.deps.get('blocks/styled/index')!;
-    expect(block).toMatchObject({ format: 'iife', css: ['blocks/styled/index.css'], styleCss: ['blocks/styled/style-index.css'] });
+    expect(block).toMatchObject({ format: 'iife', css: ['blocks/styled/index.css'], styleCss: [] });
     expect(await readBuilt(root, 'blocks/styled/index.asset.php')).toContain(`'version' => '${block.version}'`);
+  });
+});
+
+describe('a stylesheet both in block.json and imported', () => {
+  it('builds but warns that the CSS ships twice', async () => {
+    const { root, warnings } = await build('style-imported');
+    expect(warnings).toEqual([expect.stringMatching(/src\/blocks\/dup\/style\.css is a block\.json style of fixture\/dup and is also imported by blocks\/dup\/index\.js; its CSS is emitted twice/)]);
+    const files = await listFiles(path.join(root, 'build'));
+    expect(files).toEqual(expect.arrayContaining(['blocks/dup/style.css', 'blocks/dup/index.css']));
   });
 });
 
@@ -117,6 +136,6 @@ describe('build without rtl', () => {
     const { root } = await build('css-split', { rtl: false, entries: { 'admin/index': 'src/admin/index.ts' } });
     const files = await listFiles(path.join(root, 'build'));
     expect(files.some((f) => f.endsWith('-rtl.css'))).toBe(false);
-    expect(files).toContain('blocks/styled/style-index.css');
+    expect(files).toContain('blocks/styled/style.css');
   });
 });

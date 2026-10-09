@@ -4,7 +4,7 @@
   "name": "fixture/styled",
   "title": "Styled",
   "category": "widgets",
-  "editorScript": "file:./index.js",
-  "style": "file:./style-index.css",
-  "editorStyle": "file:./index.css"
+  "editorScript": "file:./index.jsx",
+  "style": "file:./style.scss",
+  "editorStyle": "file:./editor.scss"
 }

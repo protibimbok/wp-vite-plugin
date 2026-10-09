@@ -3,5 +3,5 @@
   "name": "fixture/mixed",
   "title": "Mixed",
   "category": "widgets",
-  "viewScriptModule": "file:./view.js"
+  "viewScriptModule": "file:./view.ts"
 }

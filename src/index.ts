@@ -9,7 +9,7 @@ import { i18nPlugin } from './build/i18n.js';
 import { externalsPlugin } from './externals/plugin.js';
 import type { WPViteOptions } from './options.js';
 
-export type { WPViteOptions, EntryFormat, EntryOption, ExternalsOptions, ResolvedOptions } from './options.js';
+export type { WPViteOptions, EntryFormat, ScriptFormat, EntryOption, ExternalsOptions, ResolvedOptions } from './options.js';
 export type { Entry, BlockEntrySource, Discovery } from './discovery/entries.js';
 export type { BlockMeta } from './discovery/blocks.js';
 export type { Classification, Classify } from './externals/classify.js';
@@ -26,7 +26,7 @@ export function wpVite(options: WPViteOptions = {}): Plugin[] {
     i18nPlugin(),
     externalsPlugin(holder),
     cssSplitPlugin(holder),
-    cssOutputPlugin(),
+    cssOutputPlugin(holder),
     rtlPlugin(holder),
     assetsPlugin(holder),
     copyPlugin(holder),

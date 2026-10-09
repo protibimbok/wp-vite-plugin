@@ -8,7 +8,7 @@
   "keywords": ["one", "two"],
   "editorScript": "file:./index.tsx",
   "viewScriptModule": "file:./view",
-  "style": "file:./style-index.css",
+  "style": "file:./style.css",
   "render": "file:./render.php",
   "variations": "file:./variations.php"
 }

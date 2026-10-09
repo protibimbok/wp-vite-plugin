@@ -86,6 +86,19 @@ describe('discoverEntries', () => {
     expect((await discover('basic-block', { blocks: 'nope/**/block.json' })).entries).toEqual([]);
   });
 
+  it('maps style fields to stylesheet entries named after the source', async () => {
+    const { entries } = await discover('css-split');
+    expect(entries).toEqual([
+      { name: 'blocks/styled/index', file: 'src/blocks/styled/index.jsx', format: 'iife', sources: [{ block: 'fixture/styled', field: 'editorScript' }] },
+      { name: 'blocks/styled/editor', file: 'src/blocks/styled/editor.scss', format: 'css', sources: [{ block: 'fixture/styled', field: 'editorStyle' }] },
+      { name: 'blocks/styled/style', file: 'src/blocks/styled/style.scss', format: 'css', sources: [{ block: 'fixture/styled', field: 'style' }] },
+    ]);
+  });
+
+  it('rejects block style sources that do not exist', async () => {
+    await expect(discover('missing-style')).rejects.toThrow(/block\.json \(style\): cannot find .*missing\.scss/);
+  });
+
   it('rejects block scripts outside the source directory', async () => {
     await expect(discover('invalid-block')).rejects.toThrow(/outside the source directory/);
   });

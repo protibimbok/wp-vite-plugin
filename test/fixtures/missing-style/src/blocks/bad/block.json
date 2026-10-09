@@ -1,0 +1,1 @@
+{ "name": "fixture/bad", "editorScript": "file:./index.js", "style": "file:./missing.scss" }

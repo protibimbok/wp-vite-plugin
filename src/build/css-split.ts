@@ -17,22 +17,29 @@ export function styleFileName(cssFile: string): string {
   return dir === '.' ? base : `${dir}/${base}`;
 }
 
+export function cssEntryFiles(holder: ContextHolder): Set<string> {
+  return new Set(holder.get().discovery.entries.filter((e) => e.format === 'css').map((e) => e.file));
+}
+
 // Sits between vite:css (preprocessing) and vite:css-post (collection) so that style.* sources
-// leave Vite's chunk CSS and are emitted as style-<name>.css like wp-scripts.
+// leave Vite's chunk CSS and are emitted as style-<name>.css like wp-scripts. Stylesheet entries
+// are Vite's own output and are left alone.
 export function cssSplitPlugin(holder: ContextHolder): Plugin {
   const styles = new Map<string, string>();
   let config: ResolvedConfig;
+  let entryFiles: Set<string>;
 
   return {
     name: 'wp-vite:css-split',
     apply: 'build',
     configResolved(resolved) {
       config = resolved;
+      entryFiles = cssEntryFiles(holder);
     },
     transform: {
       filter: { id: STYLE_RE },
       handler(code, id) {
-        if (!isStyleFile(id)) return null;
+        if (!isStyleFile(id) || entryFiles.has(id)) return null;
         styles.set(id, code);
         return { code: '', map: { mappings: '' } };
       },
@@ -63,19 +70,20 @@ export function cssSplitPlugin(holder: ContextHolder): Plugin {
   };
 }
 
-// Runs after vite:css-post: drops CSS files left empty by the split and the hash marker Vite
-// forgets to strip from non-code-split bundles.
-export function cssOutputPlugin(): Plugin {
+// Runs after vite:css-post: drops CSS files left empty by the split (never a stylesheet entry,
+// which block.json references) and the hash marker Vite forgets to strip from non-code-split bundles.
+export function cssOutputPlugin(holder: ContextHolder): Plugin {
   return {
     name: 'wp-vite:css-output',
     apply: 'build',
     enforce: 'post',
     generateBundle(_, bundle) {
+      const keep = new Set(holder.get().discovery.entries.filter((e) => e.format === 'css').map((e) => `${e.name}.css`));
       const removed = new Set<string>();
       for (const asset of Object.values(bundle)) {
         if (asset.type !== 'asset' || !asset.fileName.endsWith('.css') || typeof asset.source !== 'string') continue;
         asset.source = asset.source.replace(VITE_HASH_MARKER_RE, '');
-        if (asset.source.trim()) continue;
+        if (asset.source.trim() || keep.has(asset.fileName)) continue;
         delete bundle[asset.fileName];
         removed.add(asset.fileName);
       }

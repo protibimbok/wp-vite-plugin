@@ -3,6 +3,6 @@
   "name": "fixture/counter",
   "title": "Counter",
   "category": "widgets",
-  "editorScript": "file:./index.js",
-  "viewScriptModule": "file:./view.js"
+  "editorScript": "file:./index.ts",
+  "viewScriptModule": "file:./view.ts"
 }

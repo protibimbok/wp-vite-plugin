@@ -2,8 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { glob } from 'tinyglobby';
 import type { Plugin } from 'vite';
-import { MODULE_FIELDS, SCRIPT_FIELDS, fileFieldValues, type BlockMeta } from '../discovery/blocks.js';
-import { isInside, stripScriptExtension, toPosix } from '../discovery/names.js';
+import { MODULE_FIELDS, SCRIPT_FIELDS, STYLE_FIELDS, fileFieldValues, type BlockMeta } from '../discovery/blocks.js';
+import { isInside, stripScriptExtension, stripStyleExtension, toPosix } from '../discovery/names.js';
 import { WPViteError } from '../errors.js';
 import { phpFile, type PhpValue } from '../php/serialize.js';
 import type { ContextHolder } from './config.js';
@@ -12,17 +12,20 @@ export const BLOCKS_MANIFEST_FILE = 'blocks-manifest.php';
 const PHP_FIELDS = ['render', 'variations'];
 const PHP_GLOB_IGNORE = ['**/node_modules/**', '**/vendor/**'];
 
-// Script fields point at the built .js next to the copied block.json; style fields already name
-// built files (style-index.css) and are left alone, like wp-scripts.
+// Every file: asset field names a source; the output tree mirrors srcDir, so the built file sits
+// at the same relative path with the built extension.
 export function builtBlockJson(json: Record<string, unknown>): Record<string, unknown> {
   const out = { ...json };
-  const convert = (value: unknown) =>
-    typeof value === 'string' && value.startsWith('file:') ? `file:${stripScriptExtension(value.slice('file:'.length))}.js` : value;
-  for (const field of [...SCRIPT_FIELDS, ...MODULE_FIELDS]) {
-    const value = out[field];
-    if (Array.isArray(value)) out[field] = value.map(convert);
-    else if (value !== undefined) out[field] = convert(value);
-  }
+  const rewrite = (fields: readonly string[], convert: (value: string) => string) => {
+    for (const field of fields) {
+      const value = out[field];
+      const map = (v: unknown) => (typeof v === 'string' && v.startsWith('file:') ? `file:${convert(v.slice('file:'.length))}` : v);
+      if (Array.isArray(value)) out[field] = value.map(map);
+      else if (value !== undefined) out[field] = map(value);
+    }
+  };
+  rewrite([...SCRIPT_FIELDS, ...MODULE_FIELDS], (value) => `${stripScriptExtension(value)}.js`);
+  rewrite(STYLE_FIELDS, (value) => `${stripStyleExtension(value)}.css`);
   return out;
 }
 
@@ -53,7 +56,7 @@ export function copyPlugin(holder: ContextHolder): Plugin {
 
     async generateBundle() {
       const ctx = holder.get();
-      if (this.environment.name !== ctx.primaryEnvironment) return;
+      if (this.environment.name !== ctx.finalEnvironment) return;
       const { options, discovery } = ctx;
 
       for (const block of discovery.blocks) {

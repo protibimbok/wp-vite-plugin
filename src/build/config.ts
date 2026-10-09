@@ -56,7 +56,8 @@ export function configPlugin(rawOptions: WPViteOptions, holder: ContextHolder): 
 
 function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv): UserConfig {
   const { options, discovery } = ctx;
-  const esEntries = discovery.entries.filter((e) => e.format === 'es');
+  // Stylesheet entries (block.json style fields) build in the client environment with the ESM ones.
+  const clientEntries = discovery.entries.filter((e) => e.format !== 'iife');
   const iifeEntries = discovery.entries.filter((e) => e.format === 'iife');
   const isBuild = env.command === 'build';
 
@@ -65,7 +66,7 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
     publicDir: false,
     define: { SCRIPT_DEBUG: JSON.stringify(!isBuild) },
     optimizeDeps: {
-      entries: discovery.entries.map((e) => e.file),
+      entries: discovery.entries.filter((e) => e.format !== 'css').map((e) => e.file),
       exclude: externalsToExclude(options.root),
     },
     server: {
@@ -92,13 +93,13 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
     comments: { jsdoc: true },
   };
 
-  ctx.primaryEnvironment = esEntries.length > 0 ? CLIENT_ENVIRONMENT : iifeEnvironmentName(iifeEntries[0]!, 0);
+  ctx.finalEnvironment = iifeEntries.length > 0 ? iifeEnvironmentName(iifeEntries.at(-1)!, iifeEntries.length - 1) : CLIENT_ENVIRONMENT;
   config.environments![CLIENT_ENVIRONMENT] = {
     build: {
       emptyOutDir: true,
       cssCodeSplit: true,
       rolldownOptions: {
-        input: Object.fromEntries(esEntries.map((e) => [e.name, e.file])),
+        input: Object.fromEntries(clientEntries.map((e) => [e.name, e.file])),
         preserveEntrySignatures: 'exports-only',
         optimization: { inlineConst: false },
         output: { ...output, format: 'es' },
@@ -109,13 +110,13 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
   iifeEntries.forEach((entry, index) => {
     const name = iifeEnvironmentName(entry, index);
     ctx.iifeEnvironments.set(name, entry);
-    const emptyOutDir = esEntries.length === 0 && index === 0;
+    const emptyOutDir = clientEntries.length === 0 && index === 0;
     const iifeOutput = { ...output, assetFileNames: assetFileNames(() => `${entry.name}.css`) };
     config.environments![name] = iifeEnvironment(entry, emptyOutDir, iifeOutput);
   });
 
   if (!userConfig.builder) {
-    config.builder = { buildApp: (builder) => buildApp(builder, ctx, esEntries.length > 0) };
+    config.builder = { buildApp: (builder) => buildApp(builder, ctx, clientEntries.length > 0) };
   }
   return config;
 }

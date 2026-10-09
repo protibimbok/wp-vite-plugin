@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import type { Plugin, Rolldown } from 'vite';
 import type { ContextHolder } from './config.js';
 import type { ChunkDeps, EntryDeps } from '../context.js';
@@ -28,9 +29,11 @@ export function assetsPlugin(holder: ContextHolder): Plugin {
       const format = ctx.formatOf(environment);
       const records = ctx.records.get(environment) ?? new Map();
       const chunks = chunkGraph(bundle);
+      const styleEntries = ctx.discovery.entries.filter((e) => e.format === 'css');
 
       for (const chunk of Object.values(bundle)) {
         if (chunk.type !== 'chunk') continue;
+        warnImportedStyleEntries(chunk, styleEntries, ctx.options.root, (m) => this.warn(m));
         if (!chunk.isEntry) {
           const css = [...(chunk.viteMetadata?.importedCss ?? [])].sort();
           const dependencies = collectChunkDependencies(chunk, chunks, records);
@@ -39,7 +42,7 @@ export function assetsPlugin(holder: ContextHolder): Plugin {
           continue;
         }
         const entry = ctx.discovery.entries.find((e) => e.name === chunk.name);
-        if (!entry) continue;
+        if (!entry || entry.format === 'css') continue;
 
         const dependencies = collectEntryDependencies(chunks.get(chunk.fileName)!, chunks, records);
         const { css, styleCss } = cssFor(chunk, dependencies.imports, entry, bundle, format, ctx.styleFiles);
@@ -86,6 +89,19 @@ function cssFor(
   if (format === 'iife' && `${entry.name}.css` in bundle) files.add(`${entry.name}.css`);
   const sorted = [...files].sort();
   return { css: sorted.filter((f) => !styleFiles.has(f)), styleCss: sorted.filter((f) => styleFiles.has(f)) };
+}
+
+// A block.json stylesheet that a script also imports ships twice: once as its own file and once
+// inside the script's CSS.
+function warnImportedStyleEntries(chunk: Rolldown.OutputChunk, styleEntries: Entry[], root: string, warn: (message: string) => void): void {
+  for (const entry of styleEntries) {
+    if (!chunk.moduleIds.includes(entry.file)) continue;
+    const blocks = [...new Set(entry.sources.map((s) => s.block))].join(', ');
+    warn(
+      `${path.relative(root, entry.file)} is a block.json style of ${blocks} and is also imported by ${chunk.fileName}; ` +
+        `its CSS is emitted twice. Remove the import and let block.json load it.`,
+    );
+  }
 }
 
 function versionOf(chunk: Rolldown.OutputChunk, css: string[], bundle: Rolldown.OutputBundle): string {

@@ -9,20 +9,24 @@ const requirePhp = (root: string, file: string) =>
   JSON.parse(execFileSync('php', ['-r', 'echo json_encode(require $argv[1]);', path.join(root, 'build', file)], { encoding: 'utf8' }));
 
 describe('builtBlockJson', () => {
-  it('rewrites script and module file: fields to the built .js, leaving styles and other values alone', () => {
+  it('rewrites every file: asset field from its source name to the built file', () => {
     expect(
       builtBlockJson({
         editorScript: 'file:./index.tsx',
         script: ['file:./index.js', 'wp-dom-ready'],
         viewScriptModule: 'file:./view',
-        style: 'file:./style-index.css',
+        style: 'file:./style.scss',
+        editorStyle: ['file:./editor.css', 'wp-components'],
+        viewStyle: 'file:../../shared/theme.sass',
         render: 'file:./render.php',
       }),
     ).toEqual({
       editorScript: 'file:./index.js',
       script: ['file:./index.js', 'wp-dom-ready'],
       viewScriptModule: 'file:./view.js',
-      style: 'file:./style-index.css',
+      style: 'file:./style.css',
+      editorStyle: ['file:./editor.css', 'wp-components'],
+      viewStyle: 'file:../../shared/theme.css',
       render: 'file:./render.php',
     });
   });
@@ -62,7 +66,7 @@ describe('build copies block assets', () => {
       name: 'fixture/alpha',
       editorScript: 'file:./index.js',
       viewScriptModule: 'file:./view.js',
-      style: 'file:./style-index.css',
+      style: 'file:./style.css',
       render: 'file:./render.php',
       keywords: ['one', 'two'],
     });
@@ -108,6 +112,7 @@ describe('build copies block assets', () => {
       chunks: {},
     });
     expect(Object.keys(json.entries)).toEqual(['blocks/alpha/index', 'blocks/alpha/view', 'blocks/beta/index', 'blocks/beta/view']);
+    expect(await listFiles(path.join(root, 'build'))).toContain('blocks/alpha/style.css');
     expect(json.entries['blocks/alpha/view']).toEqual({
       file: 'blocks/alpha/view.js',
       format: 'es',

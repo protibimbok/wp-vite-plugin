@@ -4,7 +4,7 @@
   "title": "Counter",
   "category": "widgets",
   "supports": { "interactivity": true },
-  "editorScript": "file:./index.js",
-  "viewScriptModule": "file:./view.js",
+  "editorScript": "file:./index.jsx",
+  "viewScriptModule": "file:./view.ts",
   "render": "file:./render.php"
 }

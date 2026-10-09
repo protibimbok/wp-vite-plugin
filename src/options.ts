@@ -1,10 +1,11 @@
 import path from 'node:path';
 
-export type EntryFormat = 'es' | 'iife';
+export type ScriptFormat = 'es' | 'iife';
+export type EntryFormat = ScriptFormat | 'css';
 
 export interface EntryOption {
   src: string;
-  format?: EntryFormat;
+  format?: ScriptFormat;
 }
 
 export interface ExternalsOptions {

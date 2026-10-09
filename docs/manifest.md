@@ -9,7 +9,8 @@ unless stated otherwise.
 |---|---|
 | `<entry>.js` | One per entry. `<entry>` is the source path relative to `srcDir` without extension (`blocks/basic/index`, `admin/index`). IIFE for block.json `editorScript`/`script`/`viewScript`, ESM otherwise. |
 | `<entry>.asset.php` | wp-scripts compatible `array('dependencies' => ..., 'version' => ...)`; ESM entries add `'type' => 'module'` and list module ids as `array('id' => ..., 'import' => 'static'|'dynamic')`. |
-| `<entry>.css`, `style-<base>.css` | Non-`style.*` CSS imported by the entry, and CSS from `style(.module).*` sources. Shared-chunk CSS goes to `chunks/`. |
+| `<entry>.css`, `style-<base>.css` | Non-`style.*` CSS imported by a script entry, and CSS from `style(.module).*` sources. Shared-chunk CSS goes to `chunks/`. |
+| `<block dir>/<name>.css` | One per block.json style field: the stylesheet source compiled on its own (`style.scss` becomes `style.css`). |
 | `*-rtl.css` | `rtlcss` output for every CSS file, unless `rtl: false`. |
 | `chunks/<name>-<hash>.js` | Shared or dynamically imported chunks of ESM entries. |
 | `images/`, `fonts/`, `assets/` | Hashed static assets. |
@@ -20,11 +21,20 @@ unless stated otherwise.
 
 ### Copied `block.json`
 
-Script fields (`editorScript`, `script`, `viewScript`, `viewScriptModule`) that use `file:` are
-rewritten to the built `.js` (`file:./index.tsx` becomes `file:./index.js`; a missing extension is
-added). Because the output tree mirrors `srcDir`, the relative path stays valid even when it points
-outside the block directory. Style fields are not touched: like wp-scripts, they must already name
-the built file (`file:./style-index.css`). Everything else is copied verbatim.
+`file:` values in the source `block.json` name source files, and the copy names what they were
+built into:
+
+- Script fields (`editorScript`, `script`, `viewScript`, `viewScriptModule`) become the built `.js`
+  (`file:./index.tsx` becomes `file:./index.js`; a missing extension is added). Because the output
+  tree mirrors `srcDir`, the relative path stays valid even when it points outside the block
+  directory.
+- Style fields (`editorStyle`, `style`, `viewStyle`) name a stylesheet source (`file:./style.scss`,
+  `file:./editor.scss`). Each one is built as its own stylesheet entry through Vite's CSS pipeline
+  (Sass, PostCSS, lightningcss, asset URLs, RTL) and the field becomes the built file
+  (`file:./style.css`, `file:./editor.css`). Do not also import the file from the block's script:
+  that ships the CSS twice and the build warns. Stylesheet entries have no `asset.php` (WordPress
+  versions block styles by file modification time) and are not listed in `wp-vite.php`.
+- Everything else (`render`, `variations`, handles, metadata) is copied verbatim.
 
 ### `blocks-manifest.php`
 

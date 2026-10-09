@@ -2,12 +2,12 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { WPViteError } from '../errors.js';
 import type { EntryFormat, ResolvedOptions } from '../options.js';
-import { MODULE_FIELDS, SCRIPT_FIELDS, fileFieldValues, findBlocks, type BlockMeta, type ScriptField, type ModuleField } from './blocks.js';
-import { SCRIPT_EXTENSIONS, entryNameFor, isInside, stripScriptExtension } from './names.js';
+import { MODULE_FIELDS, SCRIPT_FIELDS, STYLE_FIELDS, fileFieldValues, findBlocks, type AssetField, type BlockMeta } from './blocks.js';
+import { SCRIPT_EXTENSIONS, STYLE_EXTENSIONS, entryNameFor, isInside, stripScriptExtension } from './names.js';
 
 export interface BlockEntrySource {
   block: string;
-  field: ScriptField | ModuleField;
+  field: AssetField;
 }
 
 export interface Entry {
@@ -33,9 +33,7 @@ export async function discoverEntries(options: ResolvedOptions): Promise<Discove
         throw new WPViteError(`Entry name "${entry.name}" is used by both ${existing.file} and ${entry.file}`);
       }
       if (existing.format !== entry.format) {
-        throw new WPViteError(
-          `${entry.file} is referenced both as a classic script and as a script module; use separate files`,
-        );
+        throw new WPViteError(`${entry.file} is referenced both as ${describe(existing.format)} and as ${describe(entry.format)}; use separate files`);
       }
       if (source) existing.sources.push(source);
       return;
@@ -47,15 +45,18 @@ export async function discoverEntries(options: ResolvedOptions): Promise<Discove
 
   const blocks = options.blocks ? await findBlocks(options.srcDir, options.blocks) : [];
   for (const block of blocks) {
-    const fields: Array<[ScriptField | ModuleField, EntryFormat]> = [
-      ...SCRIPT_FIELDS.map((f): [ScriptField, EntryFormat] => [f, 'iife']),
-      ...MODULE_FIELDS.map((f): [ModuleField, EntryFormat] => [f, 'es']),
+    const fields: Array<[AssetField, EntryFormat]> = [
+      ...SCRIPT_FIELDS.map((f): [AssetField, EntryFormat] => [f, 'iife']),
+      ...MODULE_FIELDS.map((f): [AssetField, EntryFormat] => [f, 'es']),
+      ...STYLE_FIELDS.map((f): [AssetField, EntryFormat] => [f, 'css']),
     ];
     for (const [field, format] of fields) {
       for (const value of fileFieldValues(block.json, field)) {
-        const file = await resolveScriptFile(path.resolve(block.dir, value), `${block.file} (${field})`);
+        const context = `${block.file} (${field})`;
+        const target = path.resolve(block.dir, value);
+        const file = format === 'css' ? await resolveStyleFile(target, context) : await resolveScriptFile(target, context);
         if (!isInside(options.srcDir, file)) {
-          throw new WPViteError(`${block.file} (${field}): ${value} resolves outside the source directory`);
+          throw new WPViteError(`${context}: ${value} resolves outside the source directory`);
         }
         add({ name: entryNameFor(file, options.srcDir), file, format }, { block: block.name, field });
       }
@@ -73,6 +74,18 @@ export async function discoverEntries(options: ResolvedOptions): Promise<Discove
   }
 
   return { entries: [...byName.values()], blocks };
+}
+
+function describe(format: EntryFormat): string {
+  return format === 'iife' ? 'a classic script' : format === 'es' ? 'a script module' : 'a stylesheet';
+}
+
+async function resolveStyleFile(file: string, context: string): Promise<string> {
+  if (!STYLE_EXTENSIONS.includes(path.extname(file))) {
+    throw new WPViteError(`${context}: ${file} is not a stylesheet (${STYLE_EXTENSIONS.join(', ')})`);
+  }
+  if (!(await exists(file))) throw new WPViteError(`${context}: cannot find ${file}`);
+  return file;
 }
 
 async function resolveScriptFile(file: string, context: string): Promise<string> {
