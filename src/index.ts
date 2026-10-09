@@ -10,3 +10,5 @@ export function wpVite(_options: WPViteOptions = {}): Plugin[] {
   return [];
 }
 export type { Classification, Classify } from './externals/classify.js';
+export type { WPViteContext } from './context.js';
+export type { ExternalDeps, RewriteResult } from './externals/rewrite.js';

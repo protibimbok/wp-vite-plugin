@@ -35,6 +35,7 @@
     "vite": "^7.0.0 || ^8.0.0"
   },
   "devDependencies": {
+    "@types/estree": "^1.0.9",
     "@types/node": "^26.6.4",
     "tsdown": "^0.23.0",
     "typescript": "^5.9.3",
@@ -42,6 +43,10 @@
     "vitest": "^5.0.3"
   },
   "dependencies": {
+    "@rollup/pluginutils": "^5.4.0",
+    "estree-walker": "^3.0.3",
+    "is-reference": "^3.0.3",
+    "magic-string": "^1.4.3",
     "tinyglobby": "^0.2.17"
   }
 }
