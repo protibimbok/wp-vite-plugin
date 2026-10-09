@@ -95,6 +95,7 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
     comments: { jsdoc: true },
   };
 
+  ctx.primaryEnvironment = esEntries.length > 0 ? CLIENT_ENVIRONMENT : iifeEnvironmentName(iifeEntries[0]!, 0);
   config.environments![CLIENT_ENVIRONMENT] = {
     build: {
       emptyOutDir: true,

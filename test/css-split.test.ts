@@ -52,6 +52,8 @@ describe('build with style and editor CSS', () => {
       'admin/index.js',
       'admin/style-index-rtl.css',
       'admin/style-index.css',
+      'blocks-manifest.php',
+      'blocks/styled/block.json',
       'blocks/styled/index-rtl.css',
       'blocks/styled/index.asset.php',
       'blocks/styled/index.css',
@@ -60,6 +62,8 @@ describe('build with style and editor CSS', () => {
       'blocks/styled/style-index.css',
       'settings/index.asset.php',
       'settings/index.js',
+      'wp-vite.json',
+      'wp-vite.php',
     ]);
     expect(files.filter((f) => f.startsWith('chunks/'))).toEqual([
       expect.stringMatching(/^chunks\/style-widget-[\w-]+-rtl\.css$/),

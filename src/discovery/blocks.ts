@@ -37,7 +37,7 @@ export async function findBlocks(srcDir: string, patterns: string[]): Promise<Bl
   return blocks;
 }
 
-export function fileFieldValues(json: Record<string, unknown>, field: AssetField): string[] {
+export function fileFieldValues(json: Record<string, unknown>, field: string): string[] {
   const raw = json[field];
   const values = Array.isArray(raw) ? raw : raw === undefined ? [] : [raw];
   return values

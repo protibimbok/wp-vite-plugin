@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { Plugin, Rolldown } from 'vite';
 import type { ContextHolder } from './config.js';
-import type { EntryDeps } from '../context.js';
+import type { ChunkDeps, EntryDeps } from '../context.js';
 import type { Entry } from '../discovery/entries.js';
 import { WPViteError } from '../errors.js';
 import { phpFile } from '../php/serialize.js';
-import { collectEntryDependencies, type ChunkGraphNode } from './deps.js';
+import { collectChunkDependencies, collectEntryDependencies, type ChunkGraphNode } from './deps.js';
 
 export function assetPhpSource(deps: EntryDeps): string {
   if (deps.format === 'iife') return phpFile({ dependencies: deps.scripts, version: deps.version });
@@ -30,7 +30,14 @@ export function assetsPlugin(holder: ContextHolder): Plugin {
       const chunks = chunkGraph(bundle);
 
       for (const chunk of Object.values(bundle)) {
-        if (chunk.type !== 'chunk' || !chunk.isEntry) continue;
+        if (chunk.type !== 'chunk') continue;
+        if (!chunk.isEntry) {
+          const css = [...(chunk.viteMetadata?.importedCss ?? [])].sort();
+          const dependencies = collectChunkDependencies(chunk, chunks, records);
+          const deps: ChunkDeps = { file: chunk.fileName, ...dependencies, css, version: versionOf(chunk, css, bundle) };
+          ctx.chunks.set(chunk.fileName, deps);
+          continue;
+        }
         const entry = ctx.discovery.entries.find((e) => e.name === chunk.name);
         if (!entry) continue;
 

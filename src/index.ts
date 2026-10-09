@@ -1,7 +1,9 @@
 import type { Plugin } from 'vite';
 import { assetsPlugin } from './build/asset-php.js';
 import { configPlugin, createHolder } from './build/config.js';
+import { copyPlugin } from './build/copy.js';
 import { cssOutputPlugin, cssSplitPlugin } from './build/css-split.js';
+import { manifestPlugin } from './build/manifest.js';
 import { rtlPlugin } from './build/rtl.js';
 import { i18nPlugin } from './build/i18n.js';
 import { externalsPlugin } from './externals/plugin.js';
@@ -11,7 +13,8 @@ export type { WPViteOptions, EntryFormat, EntryOption, ExternalsOptions, Resolve
 export type { Entry, BlockEntrySource, Discovery } from './discovery/entries.js';
 export type { BlockMeta } from './discovery/blocks.js';
 export type { Classification, Classify } from './externals/classify.js';
-export type { WPViteContext, EntryDeps } from './context.js';
+export type { WPViteContext, EntryDeps, ChunkDeps } from './context.js';
+export type { WPViteManifest, ManifestEntry, ManifestBlock } from './build/manifest.js';
 export type { EntryDependencies } from './build/deps.js';
 export type { ExternalDeps, RewriteResult } from './externals/rewrite.js';
 export { WPViteError } from './errors.js';
@@ -26,5 +29,7 @@ export function wpVite(options: WPViteOptions = {}): Plugin[] {
     cssOutputPlugin(),
     rtlPlugin(holder),
     assetsPlugin(holder),
+    copyPlugin(holder),
+    manifestPlugin(holder),
   ];
 }

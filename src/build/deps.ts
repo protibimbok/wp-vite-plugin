@@ -56,6 +56,33 @@ export function collectEntryDependencies(
   };
 }
 
+// Direct dependencies of one shared chunk: its own externals plus the chunk files it imports.
+export function collectChunkDependencies(
+  chunk: ChunkGraphNode,
+  chunks: ReadonlyMap<string, ChunkGraphNode>,
+  records: ReadonlyMap<string, ExternalDeps>,
+): EntryDependencies {
+  const scripts = new Set<string>();
+  const modules = new Set<string>();
+  const dynamicModules = new Set<string>();
+  for (const id of chunk.moduleIds) {
+    const record = records.get(id);
+    if (!record) continue;
+    for (const global of record.globals.values()) scripts.add(global.handle);
+    for (const { classification, dynamic } of record.modules.values()) {
+      (classification.staticOnly || !dynamic ? modules : dynamicModules).add(classification.id);
+    }
+  }
+  for (const id of modules) dynamicModules.delete(id);
+  return {
+    scripts: [...scripts].sort(),
+    modules: [...modules].sort(),
+    dynamicModules: [...dynamicModules].sort(),
+    imports: chunk.imports.filter((f) => chunks.has(f)),
+    dynamicImports: chunk.dynamicImports.filter((f) => chunks.has(f)),
+  };
+}
+
 function closure(
   start: ChunkGraphNode[],
   chunks: ReadonlyMap<string, ChunkGraphNode>,

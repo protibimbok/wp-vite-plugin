@@ -17,12 +17,16 @@ describe('build', () => {
     expect(files.filter((f) => !f.startsWith('chunks/'))).toEqual([
       'admin/index.asset.php',
       'admin/index.js',
+      'blocks-manifest.php',
+      'blocks/basic/block.json',
       'blocks/basic/index.asset.php',
       'blocks/basic/index.js',
       'blocks/basic/view.asset.php',
       'blocks/basic/view.js',
       'frontend/index.asset.php',
       'frontend/index.js',
+      'wp-vite.json',
+      'wp-vite.php',
     ]);
     expect(files.filter((f) => f.startsWith('chunks/'))).toEqual([expect.stringMatching(/^chunks\/shared-[\w-]+\.js$/)]);
     for (const file of ['blocks/basic/index.js', 'blocks/basic/view.js']) {
@@ -76,6 +80,27 @@ describe('build', () => {
     expect(ctx.deps.get('frontend/index')).toMatchObject({ scripts: ['wp-data', 'wp-i18n'], imports: admin.imports });
     expect(ctx.deps.get('blocks/basic/view')).toMatchObject({ format: 'iife', scripts: ['wp-a11y', 'wp-i18n'], imports: [] });
     expect(ctx.deps.get('blocks/basic/index')!.version).not.toBe(ctx.deps.get('blocks/basic/view')!.version);
+  });
+
+  it('records shared chunks and lists them in the manifest', async () => {
+    const [chunkFile] = ctx.deps.get('admin/index')!.imports;
+    expect(ctx.chunks.get(chunkFile!)).toMatchObject({
+      file: chunkFile,
+      scripts: ['wp-i18n'],
+      modules: [],
+      dynamicModules: [],
+      imports: [],
+      dynamicImports: [],
+      css: [],
+    });
+    const manifest = JSON.parse(await read('wp-vite.json'));
+    expect(Object.keys(manifest.chunks)).toEqual([chunkFile]);
+    expect(manifest.entries['admin/index']).toMatchObject({ src: 'src/admin.ts', sources: [], imports: [chunkFile] });
+    expect(manifest.entries['blocks/basic/index'].sources).toEqual([
+      { block: 'fixture/basic', field: 'editorScript' },
+      { block: 'fixture/basic', field: 'script' },
+    ]);
+    expect(manifest.blocksRoot).toBe('blocks');
   });
 
   it('keeps translator comments through minification', async () => {

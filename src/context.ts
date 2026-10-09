@@ -13,13 +13,21 @@ export interface EntryDeps extends EntryDependencies {
   version: string;
 }
 
+export interface ChunkDeps extends EntryDependencies {
+  file: string;
+  css: string[];
+  version: string;
+}
+
 export interface WPViteContext {
   options: ResolvedOptions;
   discovery: Discovery;
   classify: Classify;
   records: Map<string, Map<string, ExternalDeps>>;
   deps: Map<string, EntryDeps>;
+  chunks: Map<string, ChunkDeps>;
   iifeEnvironments: Map<string, Entry>;
+  primaryEnvironment: string;
   activeIifeEntry: Entry | undefined;
   styleFiles: Set<string>;
   isDev: boolean;
@@ -35,7 +43,9 @@ export function createContext(options: ResolvedOptions, discovery: Discovery, is
     classify: createClassifier(options.externals, options.root),
     records: new Map(),
     deps: new Map(),
+    chunks: new Map(),
     iifeEnvironments,
+    primaryEnvironment: '',
     activeIifeEntry: undefined,
     styleFiles: new Set(),
     isDev,

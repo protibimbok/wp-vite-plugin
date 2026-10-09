@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "fixture/alpha",
+  "title": "Alpha",
+  "category": "widgets",
+  "supports": { "interactivity": true, "html": false },
+  "keywords": ["one", "two"],
+  "editorScript": "file:./index.tsx",
+  "viewScriptModule": "file:./view",
+  "style": "file:./style-index.css",
+  "render": "file:./render.php",
+  "variations": "file:./variations.php"
+}

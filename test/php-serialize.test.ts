@@ -25,4 +25,9 @@ describe('toPhp', () => {
   it('wraps a value in a returning PHP file', () => {
     expect(phpFile({ version: '1' })).toBe("<?php return array('version' => '1');\n");
   });
+
+  it('pretty prints with tabs and trailing commas', () => {
+    expect(toPhp({ a: [1, { b: [] }], c: 'x' }, true)).toBe("array(\n\t'a' => array(\n\t\t1,\n\t\tarray(\n\t\t\t'b' => array(),\n\t\t),\n\t),\n\t'c' => 'x',\n)");
+    expect(phpFile([], true)).toBe('<?php\n// This file is generated. Do not modify it manually.\nreturn array();\n');
+  });
 });
