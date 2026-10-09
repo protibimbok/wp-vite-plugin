@@ -1,6 +1,6 @@
 {
   "name": "wp-vite-plugin",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Vite plugin and CLI for WordPress plugin development (wp-scripts parity, script modules, HMR)",
   "type": "module",
   "license": "GPL-2.0-or-later",
