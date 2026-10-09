@@ -9,3 +9,4 @@ export { WPViteError } from './errors.js';
 export function wpVite(_options: WPViteOptions = {}): Plugin[] {
   return [];
 }
+export type { Classification, Classify } from './externals/classify.js';
