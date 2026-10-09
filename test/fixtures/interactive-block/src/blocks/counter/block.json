@@ -1,0 +1,10 @@
+{
+  "apiVersion": 3,
+  "name": "fixture/counter",
+  "title": "Counter",
+  "category": "widgets",
+  "supports": { "interactivity": true },
+  "editorScript": "file:./index.js",
+  "viewScriptModule": "file:./view.js",
+  "render": "file:./render.php"
+}

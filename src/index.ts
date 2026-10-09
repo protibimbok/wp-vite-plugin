@@ -1,9 +1,11 @@
 import type { Plugin } from 'vite';
+import type { WPViteOptions } from './options.js';
 
-/** Options for the wp-vite plugin. Filled in during later steps. */
-export interface WpViteOptions {}
+export type { WPViteOptions, EntryFormat, EntryOption, ExternalsOptions, ResolvedOptions } from './options.js';
+export type { Entry, BlockEntrySource, Discovery } from './discovery/entries.js';
+export type { BlockMeta } from './discovery/blocks.js';
+export { WPViteError } from './errors.js';
 
-/** Vite plugin for WordPress plugin development. Returns an ordered set of sub-plugins. */
-export function wpVite(_options: WpViteOptions = {}): Plugin[] {
+export function wpVite(_options: WPViteOptions = {}): Plugin[] {
   return [];
 }

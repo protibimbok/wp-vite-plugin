@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      tinyglobby:
+        specifier: ^0.2.17
+        version: 0.2.17
     devDependencies:
       '@types/node':
         specifier: ^26.6.4

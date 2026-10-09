@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 3,
+  "name": "fixture/basic",
+  "title": "Basic",
+  "category": "widgets",
+  "editorScript": "file:./index.js",
+  "script": ["file:./index.js", "file:./shared.js"],
+  "viewScript": "file:./view.js",
+  "style": "file:./style-index.css",
+  "editorStyle": "file:./index.css"
+}
