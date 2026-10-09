@@ -28,7 +28,6 @@ export interface WPViteContext {
   chunks: Map<string, ChunkDeps>;
   iifeEnvironments: Map<string, Entry>;
   primaryEnvironment: string;
-  activeIifeEntry: Entry | undefined;
   styleFiles: Set<string>;
   isDev: boolean;
   devOrigin: string | undefined;
@@ -46,7 +45,6 @@ export function createContext(options: ResolvedOptions, discovery: Discovery, is
     chunks: new Map(),
     iifeEnvironments,
     primaryEnvironment: '',
-    activeIifeEntry: undefined,
     styleFiles: new Set(),
     isDev,
     devOrigin: undefined,

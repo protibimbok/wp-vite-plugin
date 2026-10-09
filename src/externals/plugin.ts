@@ -12,17 +12,22 @@ export function externalsPlugin(holder: ContextHolder): Plugin {
     name: 'wp-vite:externals',
     enforce: 'post',
 
-    resolveId(source, importer) {
-      if (!importer || !isBare(source)) return null;
-      const ctx = holder.get();
-      const environment = this.environment?.name ?? 'client';
-      const classification = ctx.classify(source, ctx.formatOf(environment));
-      if (classification.kind === 'bundle') return null;
-      if (classification.kind === 'global') {
-        return ctx.isDev ? { id: VIRTUAL_PREFIX + source, external: true } : { id: source, external: true };
-      }
-      const id = ctx.isDev && ctx.devOrigin ? `${ctx.devOrigin}/@wp-vite/wp-module/${classification.id}` : classification.id;
-      return { id, external: true };
+    // Runs before vite:resolve, which would otherwise resolve an installed @wordpress package from
+    // node_modules and bundle it.
+    resolveId: {
+      order: 'pre',
+      handler(source, importer) {
+        if (!importer || !isBare(source)) return null;
+        const ctx = holder.get();
+        const environment = this.environment?.name ?? 'client';
+        const classification = ctx.classify(source, ctx.formatOf(environment));
+        if (classification.kind === 'bundle') return null;
+        if (classification.kind === 'global') {
+          return ctx.isDev ? { id: VIRTUAL_PREFIX + source, external: true } : { id: source, external: true };
+        }
+        const id = ctx.isDev && ctx.devOrigin ? `${ctx.devOrigin}/@wp-vite/wp-module/${classification.id}` : classification.id;
+        return { id, external: true };
+      },
     },
 
     load(id) {

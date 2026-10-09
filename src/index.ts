@@ -21,7 +21,7 @@ export { WPViteError } from './errors.js';
 
 export function wpVite(options: WPViteOptions = {}): Plugin[] {
   const holder = createHolder();
-  return [
+  const plugins = [
     configPlugin(options, holder),
     i18nPlugin(),
     externalsPlugin(holder),
@@ -32,4 +32,8 @@ export function wpVite(options: WPViteOptions = {}): Plugin[] {
     copyPlugin(holder),
     manifestPlugin(holder),
   ];
+  // `vite build` re-evaluates the config file per environment; sharing the instances keeps one
+  // context (and so one complete manifest) across the ESM and IIFE builds.
+  for (const plugin of plugins) plugin.sharedDuringBuild = true;
+  return plugins;
 }

@@ -51,9 +51,6 @@ export function configPlugin(rawOptions: WPViteOptions, holder: ContextHolder): 
       holder.ctx = ctx;
       return buildConfig(ctx, userConfig, env);
     },
-    buildStart() {
-      holder.get().activeIifeEntry = holder.get().iifeEnvironments.get(this.environment.name);
-    },
   };
 }
 
@@ -81,7 +78,7 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
       sourcemap: userConfig.build?.sourcemap ?? options.sourcemap ?? false,
       minify: userConfig.build?.minify ?? options.minify,
       terserOptions: { ...terserOptions(), ...userConfig.build?.terserOptions },
-      rolldownOptions: { output: { assetFileNames: assetFileNames(ctx) } },
+      rolldownOptions: { output: { assetFileNames: assetFileNames((original) => esCssFileName(ctx, original)) } },
     },
     environments: {},
   };
@@ -113,7 +110,8 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
     const name = iifeEnvironmentName(entry, index);
     ctx.iifeEnvironments.set(name, entry);
     const emptyOutDir = esEntries.length === 0 && index === 0;
-    config.environments![name] = iifeEnvironment(entry, emptyOutDir, output);
+    const iifeOutput = { ...output, assetFileNames: assetFileNames(() => `${entry.name}.css`) };
+    config.environments![name] = iifeEnvironment(entry, emptyOutDir, iifeOutput);
   });
 
   if (!userConfig.builder) {
@@ -122,20 +120,19 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
   return config;
 }
 
-// One function for every environment: Vite resolves url() paths in chunk CSS against the root
-// config's assetFileNames, so the IIFE entry is read from context instead of being bound per env.
-function assetFileNames(ctx: WPViteContext) {
+// Vite predicts the directory of an environment's CSS bundle from that environment's assetFileNames
+// to resolve url() paths, so each IIFE environment names its own `<entry>.css` statically.
+function assetFileNames(cssFileName: (originalFileName: string | undefined) => string) {
   return (info: { names?: string[]; name?: string; originalFileNames?: string[] }): string => {
     const name = info.names?.[0] ?? info.name ?? 'asset';
-    if (name.endsWith('.css')) return cssFileName(ctx, info.originalFileNames?.[0]);
+    if (name.endsWith('.css')) return cssFileName(info.originalFileNames?.[0]);
     if (IMAGE_RE.test(name)) return 'images/[name]-[hash][extname]';
     if (FONT_RE.test(name)) return 'fonts/[name]-[hash][extname]';
     return 'assets/[name]-[hash][extname]';
   };
 }
 
-function cssFileName(ctx: WPViteContext, originalFileName: string | undefined): string {
-  if (ctx.activeIifeEntry) return `${ctx.activeIifeEntry.name}.css`;
+function esCssFileName(ctx: WPViteContext, originalFileName: string | undefined): string {
   const file = originalFileName && path.resolve(ctx.options.root, originalFileName);
   const entry = file && ctx.discovery.entries.find((e) => e.file === file);
   return entry ? `${entry.name}.css` : 'chunks/[name]-[hash].css';

@@ -1,7 +1,9 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createBuilder } from 'vite';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { WPViteContext } from '../src/index.js';
-import { build, listFiles, readBuilt, readPhp } from './helpers.js';
+import { build, fixture, listFiles, readBuilt, readPhp } from './helpers.js';
 
 describe('build', () => {
   let root: string;
@@ -134,5 +136,25 @@ describe('build with script modules', () => {
       "'dependencies' => array(array('id' => '@wordpress/interactivity', 'import' => 'static'))",
     );
     expect(ctx.deps.get('blocks/mixed/view')).toMatchObject({ scripts: ['wp-i18n'], modules: ['@wordpress/interactivity'] });
+  });
+});
+
+describe('build through a config file with externals installed', () => {
+  it('keeps installed externals external and shares one context across environments', async () => {
+    const root = fixture('installed-externals');
+    await fs.rm(path.join(root, 'build'), { recursive: true, force: true });
+    const builder = await createBuilder({ root, configFile: path.join(root, 'vite.config.ts'), logLevel: 'silent', mode: 'production' });
+    await builder.buildApp();
+
+    const view = await readBuilt(root, 'blocks/counter/view.js');
+    expect(view).toMatch(/from\s*"@wordpress\/interactivity"/);
+    expect(view).not.toContain('bundled');
+    const admin = await readBuilt(root, 'admin/index.js');
+    expect(admin).toContain('import("@wordpress/a11y")');
+    expect(admin).not.toContain('bundled');
+    expect((await listFiles(path.join(root, 'build'))).filter((f) => f.startsWith('chunks/'))).toEqual([]);
+
+    const manifest = JSON.parse(await readBuilt(root, 'wp-vite.json'));
+    expect(Object.keys(manifest.entries)).toEqual(['blocks/counter/index', 'blocks/counter/view', 'admin/index']);
   });
 });
