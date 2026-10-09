@@ -26,7 +26,7 @@ export function iifeEnvironment(entry: Entry, emptyOutDir: boolean, output: Reco
 
 export async function buildApp(builder: ViteBuilder, ctx: WPViteContext, hasClient: boolean): Promise<void> {
   if (hasClient) await builder.build(builder.environments[CLIENT_ENVIRONMENT]!);
-  for (const name of ctx.iifeEnvironments) {
+  for (const name of ctx.iifeEnvironments.keys()) {
     await builder.build(builder.environments[name]!);
   }
 }

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ConfigEnv, Plugin, UserConfig } from 'vite';
 import { createContext, type WPViteContext } from '../context.js';
-import { discoverEntries, type Entry } from '../discovery/entries.js';
+import { discoverEntries } from '../discovery/entries.js';
 import { BUNDLED_PACKAGES, WORDPRESS_NAMESPACE } from '../externals/table.js';
 import { resolveOptions, type WPViteOptions } from '../options.js';
 import { CLIENT_ENVIRONMENT, buildApp, iifeEnvironment, iifeEnvironmentName } from './environments.js';
@@ -51,6 +51,9 @@ export function configPlugin(rawOptions: WPViteOptions, holder: ContextHolder): 
       holder.ctx = ctx;
       return buildConfig(ctx, userConfig, env);
     },
+    buildStart() {
+      holder.get().activeIifeEntry = holder.get().iifeEnvironments.get(this.environment.name);
+    },
   };
 }
 
@@ -64,7 +67,6 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
     appType: 'custom',
     publicDir: false,
     define: { SCRIPT_DEBUG: JSON.stringify(!isBuild) },
-    css: { preprocessorOptions: { scss: { api: 'modern-compiler' } } },
     optimizeDeps: {
       entries: discovery.entries.map((e) => e.file),
       exclude: externalsToExclude(options.root),
@@ -79,6 +81,7 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
       sourcemap: userConfig.build?.sourcemap ?? options.sourcemap ?? false,
       minify: userConfig.build?.minify ?? options.minify,
       terserOptions: { ...terserOptions(), ...userConfig.build?.terserOptions },
+      rolldownOptions: { output: { assetFileNames: assetFileNames(ctx) } },
     },
     environments: {},
   };
@@ -100,16 +103,16 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
         input: Object.fromEntries(esEntries.map((e) => [e.name, e.file])),
         preserveEntrySignatures: 'exports-only',
         optimization: { inlineConst: false },
-        output: { ...output, format: 'es', assetFileNames: assetFileNames() },
+        output: { ...output, format: 'es' },
       },
     },
   };
 
   iifeEntries.forEach((entry, index) => {
     const name = iifeEnvironmentName(entry, index);
-    ctx.iifeEnvironments.add(name);
+    ctx.iifeEnvironments.set(name, entry);
     const emptyOutDir = esEntries.length === 0 && index === 0;
-    config.environments![name] = iifeEnvironment(entry, emptyOutDir, { ...output, assetFileNames: assetFileNames(entry) });
+    config.environments![name] = iifeEnvironment(entry, emptyOutDir, output);
   });
 
   if (!userConfig.builder) {
@@ -118,14 +121,23 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
   return config;
 }
 
-function assetFileNames(iifeEntry?: Entry) {
-  return (info: { names?: string[]; name?: string }): string => {
+// One function for every environment: Vite resolves url() paths in chunk CSS against the root
+// config's assetFileNames, so the IIFE entry is read from context instead of being bound per env.
+function assetFileNames(ctx: WPViteContext) {
+  return (info: { names?: string[]; name?: string; originalFileNames?: string[] }): string => {
     const name = info.names?.[0] ?? info.name ?? 'asset';
-    if (name.endsWith('.css')) return iifeEntry ? `${iifeEntry.name}.css` : name;
+    if (name.endsWith('.css')) return cssFileName(ctx, info.originalFileNames?.[0]);
     if (IMAGE_RE.test(name)) return 'images/[name]-[hash][extname]';
     if (FONT_RE.test(name)) return 'fonts/[name]-[hash][extname]';
     return 'assets/[name]-[hash][extname]';
   };
+}
+
+function cssFileName(ctx: WPViteContext, originalFileName: string | undefined): string {
+  if (ctx.activeIifeEntry) return `${ctx.activeIifeEntry.name}.css`;
+  const file = originalFileName && path.resolve(ctx.options.root, originalFileName);
+  const entry = file && ctx.discovery.entries.find((e) => e.file === file);
+  return entry ? `${entry.name}.css` : 'chunks/[name]-[hash].css';
 }
 
 function externalsToExclude(root: string): string[] {

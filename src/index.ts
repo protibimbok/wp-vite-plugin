@@ -1,6 +1,8 @@
 import type { Plugin } from 'vite';
 import { assetsPlugin } from './build/asset-php.js';
 import { configPlugin, createHolder } from './build/config.js';
+import { cssOutputPlugin, cssSplitPlugin } from './build/css-split.js';
+import { rtlPlugin } from './build/rtl.js';
 import { i18nPlugin } from './build/i18n.js';
 import { externalsPlugin } from './externals/plugin.js';
 import type { WPViteOptions } from './options.js';
@@ -16,5 +18,13 @@ export { WPViteError } from './errors.js';
 
 export function wpVite(options: WPViteOptions = {}): Plugin[] {
   const holder = createHolder();
-  return [configPlugin(options, holder), i18nPlugin(), externalsPlugin(holder), assetsPlugin(holder)];
+  return [
+    configPlugin(options, holder),
+    i18nPlugin(),
+    externalsPlugin(holder),
+    cssSplitPlugin(holder),
+    cssOutputPlugin(),
+    rtlPlugin(holder),
+    assetsPlugin(holder),
+  ];
 }

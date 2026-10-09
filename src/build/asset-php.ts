@@ -20,6 +20,7 @@ export function assetsPlugin(holder: ContextHolder): Plugin {
   return {
     name: 'wp-vite:assets',
     apply: 'build',
+    enforce: 'post',
 
     generateBundle(_, bundle) {
       const ctx = holder.get();
@@ -33,14 +34,16 @@ export function assetsPlugin(holder: ContextHolder): Plugin {
         const entry = ctx.discovery.entries.find((e) => e.name === chunk.name);
         if (!entry) continue;
 
-        const css = cssFor(chunk, entry, bundle, format);
+        const dependencies = collectEntryDependencies(chunks.get(chunk.fileName)!, chunks, records);
+        const { css, styleCss } = cssFor(chunk, dependencies.imports, entry, bundle, format, ctx.styleFiles);
         const deps: EntryDeps = {
           name: entry.name,
           file: chunk.fileName,
           format,
-          ...collectEntryDependencies(chunks.get(chunk.fileName)!, chunks, records),
+          ...dependencies,
           css,
-          version: versionOf(chunk, css, bundle),
+          styleCss,
+          version: versionOf(chunk, [...css, ...styleCss], bundle),
         };
         checkModuleEntry(entry, deps, ctx.options.moduleClassicDeps, (message) => this.warn(message));
         ctx.deps.set(entry.name, deps);
@@ -58,10 +61,24 @@ function chunkGraph(bundle: Rolldown.OutputBundle): Map<string, ChunkGraphNode> 
   return chunks;
 }
 
-function cssFor(chunk: Rolldown.OutputChunk, entry: Entry, bundle: Rolldown.OutputBundle, format: 'es' | 'iife'): string[] {
-  if (format === 'es') return [...(chunk.viteMetadata?.importedCss ?? [])];
-  const file = `${entry.name}.css`;
-  return file in bundle ? [file] : [];
+// Static chunk CSS belongs to the entry; dynamically imported chunks load theirs through Vite's
+// preload helper at runtime.
+function cssFor(
+  chunk: Rolldown.OutputChunk,
+  staticImports: string[],
+  entry: Entry,
+  bundle: Rolldown.OutputBundle,
+  format: 'es' | 'iife',
+  styleFiles: ReadonlySet<string>,
+): { css: string[]; styleCss: string[] } {
+  const files = new Set(chunk.viteMetadata?.importedCss);
+  for (const file of staticImports) {
+    const imported = bundle[file];
+    if (imported?.type === 'chunk') imported.viteMetadata?.importedCss.forEach((css) => files.add(css));
+  }
+  if (format === 'iife' && `${entry.name}.css` in bundle) files.add(`${entry.name}.css`);
+  const sorted = [...files].sort();
+  return { css: sorted.filter((f) => !styleFiles.has(f)), styleCss: sorted.filter((f) => styleFiles.has(f)) };
 }
 
 function versionOf(chunk: Rolldown.OutputChunk, css: string[], bundle: Rolldown.OutputBundle): string {
