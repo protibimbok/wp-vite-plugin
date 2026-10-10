@@ -2,33 +2,99 @@ import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import type { Plugin, ViteDevServer } from 'vite';
 import type { ContextHolder } from '../build/config.js';
+import { writeCopyFiles } from '../build/copy.js';
+import type { WPViteContext } from '../context.js';
 import { discoverEntries } from '../discovery/entries.js';
 import { isInside } from '../discovery/names.js';
+import { startDevBuild, type DevBuild } from './build.js';
 import { crawlEntries, type DevDeps } from './crawl.js';
 import { createHotFile, hotFilePath, removeHotFile, writeHotFile, type HotFile } from './hot-file.js';
 import { REACT_REFRESH_PLUGIN } from './virtual.js';
 import { wpModuleMiddleware } from './wp-modules.js';
 
 const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+const RELOAD_DEBOUNCE_MS = 100;
 
 interface HotState {
   file: string;
-  origin: string;
-  refresh: boolean;
   deps: DevDeps;
   current: HotFile | undefined;
+}
+
+interface DevState {
+  server: ViteDevServer;
+  origin: string;
+  refresh: boolean;
+  hot: HotState | undefined;
+  build: DevBuild | undefined;
+  buildKey: string;
+  reloadTimer: NodeJS.Timeout | undefined;
   closed: boolean;
 }
 
-export function devServerPlugin(holder: ContextHolder): Plugin {
+export function devServerPlugin(holder: ContextHolder, freshPlugins: () => Plugin[]): Plugin {
   let cleanup: (() => void) | undefined;
-  let state: HotState | undefined;
+  let state: DevState | undefined;
+
+  const log = (error: unknown) => {
+    state?.server.config.logger.error(`[wp-vite] ${(error as Error).message}`, { error: error as Error, timestamp: true });
+  };
 
   const publish = (hot: HotFile) => {
-    if (!state || state.closed) return;
-    state.current = hot;
-    writeHotFile(state.file, hot);
-    cleanup ??= installCleanup(() => removeHotFile(state!.file));
+    if (!state?.hot || state.closed) return;
+    const { file } = state.hot;
+    state.hot.current = hot;
+    writeHotFile(file, hot);
+    cleanup ??= installCleanup(() => removeHotFile(file));
+  };
+
+  // Each IIFE environment rebuilds on its own; one reload covers a change shared between them.
+  const scheduleReload = () => {
+    if (!state || state.closed || !holder.get().options.liveReload) return;
+    clearTimeout(state.reloadTimer);
+    state.reloadTimer = setTimeout(() => {
+      if (state && !state.closed) state.server.environments.client.hot.send({ type: 'full-reload', path: '*' });
+    }, RELOAD_DEBOUNCE_MS);
+  };
+
+  const iifeKey = (ctx: WPViteContext) =>
+    ctx.discovery.entries
+      .filter((e) => e.format === 'iife')
+      .map((e) => `${e.name}=${e.file}`)
+      .join('\n');
+
+  // Classic block scripts come from a watch build, restarted when the set of them changes.
+  const syncBuild = async (current: DevState, ctx: WPViteContext) => {
+    const key = iifeKey(ctx);
+    if (key === current.buildKey && (current.build || !key)) return;
+    current.buildKey = key;
+    const previous = current.build;
+    current.build = undefined;
+    await previous?.close();
+    if (!key || current.closed) return;
+    try {
+      current.build = await startDevBuild(current.server, freshPlugins, scheduleReload);
+      if (current.closed) await current.build.close();
+    } catch (error) {
+      log(error);
+    }
+  };
+
+  const writeCopies = (ctx: WPViteContext) => writeCopyFiles(ctx).catch(log);
+
+  // The hot file switches WordPress to dev mode, so it is only written once the served entries'
+  // dependencies are known and the classic scripts are built; until then pages use the production build.
+  const start = async (current: DevState, ctx: WPViteContext) => {
+    await writeCopies(ctx);
+    await syncBuild(current, ctx);
+    if (!current.hot) return;
+    const [{ deps, errors }] = await Promise.all([crawlEntries(current.server.environments.client, ctx), current.build?.ready]);
+    for (const { entry, error } of errors) {
+      current.server.config.logger.error(`[wp-vite] ${entry.name}: ${error.message}`, { error, timestamp: true });
+    }
+    if (state !== current) return;
+    current.hot.deps = deps;
+    publish(createHotFile(ctx, current.origin, current.refresh, deps));
   };
 
   return {
@@ -48,43 +114,40 @@ export function devServerPlugin(holder: ContextHolder): Plugin {
         // Vite reads server.origin lazily when it rewrites asset URLs; without it, `/src/logo.png`
         // would resolve against the WordPress page instead of the dev server.
         if (!server.config.server.origin) server.config.server.origin = origin;
-        if (ctx.options.hot === false) return;
 
-        state = { file: hotFilePath(ctx), origin, refresh, deps: new Map(), current: undefined, closed: false };
-        // The hot file switches WordPress to dev mode, so it is only written once the dependencies
-        // are known; until then pages keep using the production build.
-        void crawlEntries(server.environments.client, ctx).then(({ deps, errors }) => {
-          for (const { entry, error } of errors) {
-            server.config.logger.error(`[wp-vite] ${entry.name}: ${error.message}`, { error, timestamp: true });
-          }
-          if (!state) return;
-          state.deps = deps;
-          publish(createHotFile(ctx, origin, refresh, deps));
-        });
+        const hot = ctx.options.hot === false ? undefined : { file: hotFilePath(ctx), deps: new Map(), current: undefined };
+        state = { server, origin, refresh, hot, build: undefined, buildKey: '', reloadTimer: undefined, closed: false };
+        void start(state, ctx);
       });
     },
 
     async hotUpdate({ file, modules }) {
-      if (this.environment.name !== 'client' || !state?.current) return;
+      const current = state;
+      if (this.environment.name !== 'client' || !current) return;
       const ctx = holder.get();
-      const blockJson = path.basename(file) === 'block.json' && isInside(ctx.options.srcDir, file);
-      if (!blockJson && modules.length === 0) return;
+      const inSrc = isInside(ctx.options.srcDir, file);
+      const blockJson = inSrc && path.basename(file) === 'block.json';
+      const php = inSrc && file.endsWith('.php');
+      if (!blockJson && !php && modules.length === 0) return;
 
       if (blockJson) {
         try {
           ctx.discovery = await discoverEntries(ctx.options);
         } catch (error) {
-          this.environment.logger.error(`[wp-vite] ${(error as Error).message}`, { error: error as Error, timestamp: true });
+          log(error);
           return;
         }
+        await syncBuild(current, ctx);
       }
+      if (blockJson || php) await writeCopies(ctx);
+      if (!current.hot?.current || (!blockJson && modules.length === 0)) return;
 
       // Broken modules are reported by Vite when the browser fetches them; the previous deps stand.
-      const { deps } = await crawlEntries(this.environment, ctx, state.deps);
-      if (!state.current) return;
-      state.deps = deps;
-      const next = createHotFile(ctx, state.origin, state.refresh, deps);
-      if (JSON.stringify(next) === JSON.stringify(state.current)) return;
+      const { deps } = await crawlEntries(this.environment, ctx, current.hot.deps);
+      if (current.closed) return;
+      current.hot.deps = deps;
+      const next = createHotFile(ctx, current.origin, current.refresh, deps);
+      if (JSON.stringify(next) === JSON.stringify(current.hot.current)) return;
 
       // WordPress enqueues the dependencies, so a change in them needs a fresh page.
       publish(next);
@@ -92,11 +155,15 @@ export function devServerPlugin(holder: ContextHolder): Plugin {
       return [];
     },
 
-    closeServer() {
-      if (state) state.closed = true;
+    async closeServer() {
+      const current = state;
+      if (!current) return;
+      current.closed = true;
+      clearTimeout(current.reloadTimer);
       cleanup?.();
       cleanup = undefined;
       state = undefined;
+      await current.build?.close();
     },
   };
 }

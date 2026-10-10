@@ -33,6 +33,7 @@ export async function crawlEntries(environment: DevEnvironment, ctx: WPViteConte
   const result: CrawlResult = { deps: new Map(), errors: [] };
 
   for (const entry of ctx.discovery.entries) {
+    if (entry.format === 'iife') continue;
     if (entry.format === 'css') {
       result.deps.set(entry.name, { scripts: [], modules: [], styles: [] });
       continue;

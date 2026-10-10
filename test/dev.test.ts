@@ -5,7 +5,7 @@ import { createServer, type Plugin, type ViteDevServer } from 'vite';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ContextHolder } from '../src/build/config.js';
 import { wpVite, type HotFile, type WPViteContext, type WPViteOptions } from '../src/index.js';
-import { fixture } from './helpers.js';
+import { fixture, listFiles } from './helpers.js';
 
 const hotFileIn = (dir: string) => path.join(dir, 'build', '.wp-vite', 'hot.json');
 
@@ -20,8 +20,8 @@ interface Started {
 let started: Started | undefined;
 let tempDir: string | undefined;
 
-// Each test works on a temp copy: the hot file lands in `build/`, which the build tests of the same
-// fixtures wipe and list concurrently, and the hot-update tests edit sources.
+// Each test works on a temp copy: the dev server writes into `build/`, which the build tests of the
+// same fixtures wipe and list concurrently, and the hot-update tests edit sources.
 async function copyFixture(name: string): Promise<string> {
   tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wp-vite-dev-'));
   await fs.cp(fixture(name), tempDir, { recursive: true, filter: (src) => path.basename(src) !== 'build' });
@@ -46,8 +46,11 @@ async function start(options: WPViteOptions = {}, extraPlugins: Plugin[] = [], n
 
 const readHot = async (file: string) => JSON.parse(await fs.readFile(file, 'utf8')) as HotFile;
 
-// The hot file is written once the dependency crawl finishes, after listen() has returned.
-const waitForHot = (file: string) => vi.waitFor(() => readHot(file), { timeout: 15_000, interval: 25 });
+// The hot file is written once the dependency crawl and the first watch build finish, after listen().
+const waitForHot = (file: string) => vi.waitFor(() => readHot(file), { timeout: 20_000, interval: 25 });
+
+const builtFiles = (dir: string) => listFiles(path.join(dir, 'build'));
+const readBuilt = (dir: string, file: string) => fs.readFile(path.join(dir, 'build', file), 'utf8');
 
 async function fetchText(url: string, headers: Record<string, string> = {}) {
   const res = await fetch(url, { headers });
@@ -61,6 +64,8 @@ async function touch(server: ViteDevServer, file: string, content: string) {
   server.watcher.emit('change', file);
 }
 
+const settle = (ms = 400) => new Promise((resolve) => setTimeout(resolve, ms));
+
 afterEach(async () => {
   await started?.server.close();
   started = undefined;
@@ -69,7 +74,7 @@ afterEach(async () => {
 });
 
 describe('dev server', () => {
-  it('writes the hot file with crawled dependencies on listen and removes it on close', async () => {
+  it('writes the hot file for served entries on listen and removes it on close', async () => {
     const listeners = process.listenerCount('SIGINT');
     const { server, origin, hotFile } = await start();
     expect(origin).toMatch(/^http:\/\/localhost:\d+$/);
@@ -90,24 +95,8 @@ describe('dev server', () => {
           modules: ['@wordpress/a11y'],
           styles: [],
         },
-        'blocks/basic/index': {
-          url: `${origin}/src/blocks/basic/index.tsx`,
-          src: 'src/blocks/basic/index.tsx',
-          format: 'iife',
-          scripts: ['react-jsx-runtime', 'wp-blocks', 'wp-i18n'],
-          modules: [],
-          styles: [],
-        },
-        'blocks/basic/view': {
-          url: `${origin}/src/blocks/basic/view.ts`,
-          src: 'src/blocks/basic/view.ts',
-          format: 'iife',
-          scripts: ['wp-i18n'],
-          modules: ['@wordpress/a11y'],
-          styles: [],
-        },
       },
-      blocks: [{ name: 'fixture/basic', dir: 'src/blocks/basic' }],
+      blocks: [{ name: 'fixture/basic', dir: 'src/blocks/basic', fields: {} }],
     });
     expect(await fs.readdir(path.dirname(hotFile))).toEqual(['hot.json']);
 
@@ -116,25 +105,32 @@ describe('dev server', () => {
     expect(process.listenerCount('SIGINT')).toBe(listeners);
   });
 
-  it('lists imported stylesheets and leaves stylesheet entries alone', async () => {
+  it('lists imported stylesheets, stylesheet entries and the block field map', async () => {
     const { origin, hotFile } = await start({ entries: { 'admin/index': 'src/admin/index.ts' } }, [], 'css-split');
-    const { entries } = await waitForHot(hotFile);
+    const { entries, blocks } = await waitForHot(hotFile);
     expect(entries['admin/index']).toMatchObject({
       scripts: [],
       modules: [],
       styles: [`${origin}/src/admin/admin.css`, `${origin}/src/admin/style.css`, `${origin}/src/shared/style.scss`, `${origin}/src/shared/widget.css`],
     });
-    expect(entries['blocks/styled/index']).toMatchObject({
-      scripts: ['react-jsx-runtime', 'wp-blocks'],
-      styles: [`${origin}/src/blocks/styled/editor.module.css`],
+    expect(entries['blocks/styled/index']).toBeUndefined();
+    expect(entries['blocks/styled/style']).toEqual({
+      url: `${origin}/src/blocks/styled/style.scss`,
+      src: 'src/blocks/styled/style.scss',
+      format: 'css',
+      scripts: [],
+      modules: [],
+      styles: [],
     });
-    expect(entries['blocks/styled/style']).toMatchObject({ format: 'css', scripts: [], modules: [], styles: [] });
     expect(entries['blocks/styled/editor']).toMatchObject({ format: 'css', styles: [] });
+    expect(blocks).toEqual([
+      { name: 'fixture/styled', dir: 'src/blocks/styled', fields: { style: ['blocks/styled/style'], editorStyle: ['blocks/styled/editor'] } },
+    ]);
   });
 
-  it('skips the hot file with hot: false', async () => {
-    const { server, hotFile } = await start({ hot: false });
-    await server.transformRequest('/src/blocks/basic/index.tsx');
+  it('skips the hot file with hot: false but still builds classic scripts', async () => {
+    const { root, hotFile } = await start({ hot: false });
+    await vi.waitFor(() => fs.access(path.join(root, 'build/blocks/basic/view.asset.php')), { timeout: 20_000 });
     expect(await exists(hotFile)).toBe(false);
   });
 
@@ -202,23 +198,107 @@ describe('dev server', () => {
 describe('refresh preamble', () => {
   const PREAMBLE_IMPORT = /import "\/@wp-vite\/react-refresh-preamble(?:\?[^"]*)?";/;
 
-  it('prepends the preamble import to every script entry when refresh is active', async () => {
+  it('prepends the preamble import to script module entries when refresh is active', async () => {
     const { server } = await start({}, [{ name: 'vite:react-refresh' }]);
-    for (const url of ['/src/blocks/basic/index.tsx', '/src/blocks/basic/view.ts', '/src/admin.ts']) {
+    const admin = await server.transformRequest('/src/admin.ts');
+    expect(admin?.code).toMatch(PREAMBLE_IMPORT);
+    // Module imports evaluate in source order, so the preamble has to be the first one.
+    expect(admin?.code.indexOf('/@wp-vite/react-refresh-preamble')).toBeLessThan(admin!.code.indexOf('/src/blocks/basic/shared.js'));
+    for (const url of ['/src/blocks/basic/index.tsx', '/src/blocks/basic/shared.js']) {
       const result = await server.transformRequest(url);
-      expect(result?.code, url).toMatch(PREAMBLE_IMPORT);
-      // Module imports evaluate in source order, so the preamble has to be the first one.
-      expect(result?.code.indexOf('/@wp-vite/react-refresh-preamble'), url).toBeLessThan(result!.code.indexOf('/src/blocks/basic/shared.js'));
+      expect(result?.code, url).not.toMatch(PREAMBLE_IMPORT);
     }
-    const shared = await server.transformRequest('/src/blocks/basic/shared.js');
-    expect(shared?.code).not.toMatch(PREAMBLE_IMPORT);
   });
 
   it('leaves entries untouched without a refresh plugin', async () => {
     const { server } = await start();
-    const block = await server.transformRequest('/src/blocks/basic/index.tsx');
-    expect(block?.code).not.toMatch(PREAMBLE_IMPORT);
-    expect(block?.code).not.toContain('import.meta.hot');
+    const admin = await server.transformRequest('/src/admin.ts');
+    expect(admin?.code).not.toMatch(PREAMBLE_IMPORT);
+    expect(admin?.code).not.toContain('import.meta.hot');
+  });
+});
+
+describe('dev build', () => {
+  it('builds classic block scripts, asset.php and block copies into outDir without CSS or manifests', async () => {
+    const { root, hotFile } = await start();
+    await waitForHot(hotFile);
+    expect(await builtFiles(root)).toEqual([
+      '.wp-vite/hot.json',
+      'blocks-manifest.php',
+      'blocks/basic/block.json',
+      'blocks/basic/index.asset.php',
+      'blocks/basic/index.js',
+      'blocks/basic/view.asset.php',
+      'blocks/basic/view.js',
+    ]);
+
+    const index = await readBuilt(root, 'blocks/basic/index.js');
+    expect(index).toContain('window.wp.blocks.registerBlockType(');
+    expect(index).toContain('window.ReactJSXRuntime.jsx(');
+    expect(index).not.toContain('jsxDEV');
+    expect(index).toContain('/** translators: block title */');
+    expect(index).toMatch(/^\(function\(\) \{\n/);
+    expect(await readBuilt(root, 'blocks/basic/index.asset.php')).toMatch(
+      /^<\?php return array\('dependencies' => array\('react-jsx-runtime', 'wp-blocks', 'wp-i18n'\), 'version' => '[0-9a-f]{20}'\);\n$/,
+    );
+    expect(JSON.parse(await readBuilt(root, 'blocks/basic/block.json'))).toMatchObject({ editorScript: 'file:./index.js', viewScript: 'file:./view.js' });
+    expect(await readBuilt(root, 'blocks-manifest.php')).toContain("'basic' => array(");
+  });
+
+  it('builds CSS imported by classic scripts but serves block.json stylesheets', async () => {
+    const { root, hotFile } = await start({ entries: { 'admin/index': 'src/admin/index.ts' } }, [], 'css-split');
+    await waitForHot(hotFile);
+    const files = await builtFiles(root);
+    expect(files).toContain('blocks/styled/index.js');
+    expect(files).toContain('blocks/styled/index.css');
+    expect(files).not.toContain('blocks/styled/style.css');
+    expect(files).not.toContain('blocks/styled/editor.css');
+    expect(files.filter((f) => f.startsWith('admin/'))).toEqual([]);
+  });
+
+  it('defines SCRIPT_DEBUG as true', async () => {
+    const { root, hotFile } = await start({ entries: { 'admin/index': 'src/admin.ts', legacy: { src: 'src/legacy.ts', format: 'iife' } } });
+    await waitForHot(hotFile);
+    expect(await readBuilt(root, 'legacy.js')).not.toContain('SCRIPT_DEBUG');
+  });
+
+  it('starts no watch build when there are no classic entries', async () => {
+    const { root, hotFile } = await start({ entries: {} }, [], 'index-only');
+    await waitForHot(hotFile);
+    expect(await builtFiles(root)).toEqual(['.wp-vite/hot.json']);
+  });
+
+  it('rebuilds on edit and sends a full reload', async () => {
+    const { server, root, hotFile } = await start();
+    await waitForHot(hotFile);
+    const send = vi.spyOn(server.environments.client.hot, 'send');
+
+    const view = path.join(root, 'src/blocks/basic/view.ts');
+    await fs.writeFile(view, `${await fs.readFile(view, 'utf8')}\nconsole.log('rebuilt');\n`);
+    await vi.waitFor(async () => expect(await readBuilt(root, 'blocks/basic/view.js')).toContain('console.log("rebuilt")'), { timeout: 20_000 });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledWith({ type: 'full-reload', path: '*' }), { timeout: 5_000 });
+    expect(await readHot(hotFile)).toEqual(await readHot(hotFile));
+  });
+
+  it('sends nothing after a rebuild with liveReload: false', async () => {
+    const { server, root, hotFile } = await start({ liveReload: false });
+    await waitForHot(hotFile);
+    const send = vi.spyOn(server.environments.client.hot, 'send');
+
+    const view = path.join(root, 'src/blocks/basic/view.ts');
+    await fs.writeFile(view, `${await fs.readFile(view, 'utf8')}\nconsole.log('rebuilt');\n`);
+    await vi.waitFor(async () => expect(await readBuilt(root, 'blocks/basic/view.js')).toContain('console.log("rebuilt")'), { timeout: 20_000 });
+    await settle();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('copies PHP files again when they change', async () => {
+    const { server, root, hotFile } = await start({ entries: {} }, [], 'copy-php');
+    await waitForHot(hotFile);
+    expect(await readBuilt(root, 'blocks/alpha/render.php')).toBe('<?php echo "alpha";\n');
+
+    await touch(server, path.join(root, 'src/blocks/alpha/render.php'), '<?php echo "alpha!";\n');
+    await vi.waitFor(async () => expect(await readBuilt(root, 'blocks/alpha/render.php')).toBe('<?php echo "alpha!";\n'), { timeout: 10_000 });
   });
 });
 
@@ -228,43 +308,65 @@ describe('hot updates', () => {
     const before = await waitForHot(hotFile);
     const send = vi.spyOn(server.environments.client.hot, 'send');
 
-    const view = path.join(dir, 'src/blocks/basic/view.ts');
-    await touch(server, view, `${await fs.readFile(view, 'utf8')}\nimport { select } from '@wordpress/data';\nselect;\n`);
+    const admin = path.join(dir, 'src/admin.ts');
+    await touch(server, admin, `${await fs.readFile(admin, 'utf8')}\nimport { select } from '@wordpress/data';\nselect;\n`);
 
-    await vi.waitFor(async () => expect((await readHot(hotFile)).entries['blocks/basic/view']!.scripts).toEqual(['wp-data', 'wp-i18n']), { timeout: 15_000 });
+    await vi.waitFor(
+      async () => expect((await readHot(hotFile)).entries['admin/index']!.scripts).toEqual(['wp-api-fetch', 'wp-data', 'wp-element', 'wp-i18n']),
+      { timeout: 15_000 },
+    );
     expect(send).toHaveBeenCalledWith({ type: 'full-reload', path: '*' });
     expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'update' }));
     const after = await readHot(hotFile);
-    expect(after.entries['blocks/basic/view']!.modules).toEqual(['@wordpress/a11y']);
-    expect({ ...after, entries: { ...after.entries, 'blocks/basic/view': before.entries['blocks/basic/view'] } }).toEqual(before);
+    expect(after.entries['admin/index']!.modules).toEqual(['@wordpress/a11y']);
+    expect({ ...after, entries: { ...after.entries, 'admin/index': before.entries['admin/index'] } }).toEqual(before);
   });
 
   it('leaves the hot file alone and lets Vite handle the update when dependencies are unchanged', async () => {
     const { server, hotFile, root: dir } = await start();
     const before = await waitForHot(hotFile);
+    await server.transformRequest('/src/admin.ts');
     const send = vi.spyOn(server.environments.client.hot, 'send');
 
-    const index = path.join(dir, 'src/blocks/basic/index.tsx');
-    await touch(server, index, (await fs.readFile(index, 'utf8')).replace("'Basic block'", "'Basic block!'"));
+    const admin = path.join(dir, 'src/admin.ts');
+    await touch(server, admin, (await fs.readFile(admin, 'utf8')).replace('/wp/v2/posts', '/wp/v2/pages'));
 
     // An entry has no importers, so Vite itself falls back to a full reload (marked by triggeredBy).
     await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'full-reload', triggeredBy: expect.any(String) })), { timeout: 15_000 });
     expect(send).not.toHaveBeenCalledWith({ type: 'full-reload', path: '*' });
     expect(await readHot(hotFile)).toEqual(before);
-    const served = await server.transformRequest('/src/blocks/basic/index.tsx');
-    expect(served?.code).toContain('"Basic block!"');
+    const served = await server.transformRequest('/src/admin.ts');
+    expect(served?.code).toContain('"/wp/v2/pages"');
   });
 
-  it('rediscovers entries when a block.json changes', async () => {
+  it('hot-swaps a block.json stylesheet instead of reloading', async () => {
+    const { server, origin, hotFile, root: dir } = await start({ entries: { 'admin/index': 'src/admin/index.ts' } }, [], 'css-split');
+    await waitForHot(hotFile);
+    const link = await fetchText(`${origin}/src/blocks/styled/style.scss`, { accept: 'text/css' });
+    expect(link.status).toBe(200);
+    expect(link.headers.get('content-type')).toContain('text/css');
+    const send = vi.spyOn(server.environments.client.hot, 'send');
+
+    const style = path.join(dir, 'src/blocks/styled/style.scss');
+    await touch(server, style, `${await fs.readFile(style, 'utf8')}\n.swapped { color: red; }\n`);
+    await vi.waitFor(
+      () => expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'update', updates: [expect.objectContaining({ type: 'css-update', path: '/src/blocks/styled/style.scss?direct' })] })),
+      { timeout: 15_000 },
+    );
+    expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'full-reload' }));
+  });
+
+  it('rediscovers entries, rewrites the block copy and restarts the build when a block.json changes', async () => {
     const { server, origin, hotFile, root: dir } = await start();
     await waitForHot(hotFile);
     const send = vi.spyOn(server.environments.client.hot, 'send');
 
     const blockDir = path.join(dir, 'src/blocks/basic');
     await fs.writeFile(path.join(blockDir, 'module.ts'), "import { store } from '@wordpress/interactivity';\nstore('fixture/basic', {});\n");
+    await fs.writeFile(path.join(blockDir, 'extra.ts'), "console.log('extra');\n");
     const blockJson = path.join(blockDir, 'block.json');
     const json = JSON.parse(await fs.readFile(blockJson, 'utf8')) as Record<string, unknown>;
-    await touch(server, blockJson, JSON.stringify({ ...json, viewScriptModule: 'file:./module.ts' }, null, 2));
+    await touch(server, blockJson, JSON.stringify({ ...json, viewScriptModule: 'file:./module.ts', viewScript: ['file:./view.ts', 'file:./extra.ts'] }, null, 2));
 
     const hot = await vi.waitFor(async () => {
       const hot = await readHot(hotFile);
@@ -279,7 +381,15 @@ describe('hot updates', () => {
       modules: ['@wordpress/interactivity'],
       styles: [],
     });
-    expect(Object.keys(hot.entries)).toHaveLength(4);
+    expect(Object.keys(hot.entries)).toEqual(['blocks/basic/module', 'admin/index']);
+    expect(hot.blocks).toEqual([{ name: 'fixture/basic', dir: 'src/blocks/basic', fields: { viewScriptModule: ['blocks/basic/module'] } }]);
     expect(send).toHaveBeenCalledWith({ type: 'full-reload', path: '*' });
+
+    expect(JSON.parse(await readBuilt(dir, 'blocks/basic/block.json'))).toMatchObject({
+      viewScriptModule: 'file:./module.js',
+      viewScript: ['file:./view.js', 'file:./extra.js'],
+    });
+    await vi.waitFor(async () => expect(await readBuilt(dir, 'blocks/basic/extra.js')).toContain('console.log("extra")'), { timeout: 20_000 });
+    expect(await exists(path.join(dir, 'build/blocks/basic/module.js'))).toBe(false);
   });
 });

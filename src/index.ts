@@ -18,9 +18,10 @@ export type { BlockMeta } from './discovery/blocks.js';
 export type { Classification, Classify } from './externals/classify.js';
 export type { WPViteContext, EntryDeps, ChunkDeps } from './context.js';
 export type { WPViteManifest, ManifestEntry, ManifestBlock } from './build/manifest.js';
+export type { CopyFile } from './build/copy.js';
 export type { EntryDependencies } from './build/deps.js';
 export type { ExternalDeps, RewriteResult } from './externals/rewrite.js';
-export type { HotFile, HotFileEntry } from './dev/hot-file.js';
+export type { HotFile, HotFileEntry, HotFileBlock, ServedField } from './dev/hot-file.js';
 export type { EntryDevDeps, DevDeps } from './dev/crawl.js';
 export { WPViteError } from './errors.js';
 
@@ -31,7 +32,7 @@ export function wpVite(options: WPViteOptions = {}): Plugin[] {
     i18nPlugin(),
     externalsPlugin(holder),
     devVirtualPlugin(holder),
-    devServerPlugin(holder),
+    devServerPlugin(holder, () => wpVite(options)),
     refreshPreamblePlugin(holder),
     cssSplitPlugin(holder),
     cssOutputPlugin(holder),

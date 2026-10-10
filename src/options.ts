@@ -27,6 +27,7 @@ export interface WPViteOptions {
   externals?: ExternalsOptions;
   moduleClassicDeps?: 'error' | 'warn';
   hot?: boolean;
+  liveReload?: boolean;
   wpOrigin?: string | string[];
   minify?: 'terser' | 'oxc';
   manifest?: { php?: boolean; json?: boolean };
@@ -46,6 +47,7 @@ export interface ResolvedOptions {
   externals: ExternalsOptions;
   moduleClassicDeps: 'error' | 'warn';
   hot: boolean | undefined;
+  liveReload: boolean;
   wpOrigin: string[] | undefined;
   minify: 'terser' | 'oxc';
   manifest: { php: boolean; json: boolean };
@@ -81,6 +83,7 @@ export function resolveOptions(options: WPViteOptions, root: string): ResolvedOp
     externals: options.externals ?? {},
     moduleClassicDeps: options.moduleClassicDeps ?? 'error',
     hot: options.hot,
+    liveReload: options.liveReload ?? true,
     wpOrigin: options.wpOrigin === undefined ? undefined : ([] as string[]).concat(options.wpOrigin),
     minify: options.minify ?? 'terser',
     manifest: { php: options.manifest?.php ?? true, json: options.manifest?.json ?? true },

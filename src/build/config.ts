@@ -1,12 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ConfigEnv, Plugin, UserConfig } from 'vite';
+import type { ConfigEnv, Plugin, PluginOption, UserConfig } from 'vite';
 import { createContext, type WPViteContext } from '../context.js';
 import { discoverEntries } from '../discovery/entries.js';
 import { BUNDLED_PACKAGES, WORDPRESS_NAMESPACE } from '../externals/table.js';
 import { resolveOptions, type WPViteOptions } from '../options.js';
 import { CLIENT_ENVIRONMENT, buildApp, iifeEnvironment, iifeEnvironmentName } from './environments.js';
 import { terserOptions } from './i18n.js';
+
+// Marker plugin the dev server adds to the watch build it launches for classic block scripts.
+export const DEV_BUILD_PLUGIN = 'wp-vite:dev-build';
 
 const FIXED_EXTERNALS = [
   'react',
@@ -39,6 +42,15 @@ export function createHolder(): ContextHolder {
   };
 }
 
+export function isDevBuild(config: UserConfig): boolean {
+  const flatten = (option: PluginOption): Plugin[] =>
+    Array.isArray(option) ? option.flatMap(flatten) : option && typeof option === 'object' && 'name' in option ? [option] : [];
+  return flatten(config.plugins ?? []).some((plugin) => plugin.name === DEV_BUILD_PLUGIN);
+}
+
+// For plugins that only produce output the dev server writes itself (copies, manifests).
+export const applyProdBuild: NonNullable<Plugin['apply']> = (config, env) => env.command === 'build' && !isDevBuild(config);
+
 export function configPlugin(rawOptions: WPViteOptions, holder: ContextHolder): Plugin {
   return {
     name: 'wp-vite:config',
@@ -60,13 +72,14 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
   const clientEntries = discovery.entries.filter((e) => e.format !== 'iife');
   const iifeEntries = discovery.entries.filter((e) => e.format === 'iife');
   const isBuild = env.command === 'build';
+  const devBuild = isBuild && isDevBuild(userConfig);
 
   const config: UserConfig = {
     appType: 'custom',
     publicDir: false,
-    define: { SCRIPT_DEBUG: JSON.stringify(!isBuild) },
+    define: { SCRIPT_DEBUG: JSON.stringify(!isBuild || devBuild) },
     optimizeDeps: {
-      entries: discovery.entries.filter((e) => e.format !== 'css').map((e) => e.file),
+      entries: discovery.entries.filter((e) => e.format === 'es').map((e) => e.file),
       exclude: externalsToExclude(options.root),
     },
     server: {
@@ -77,7 +90,7 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
       manifest: false,
       assetsDir: 'assets',
       sourcemap: userConfig.build?.sourcemap ?? options.sourcemap ?? false,
-      minify: userConfig.build?.minify ?? options.minify,
+      minify: devBuild ? false : (userConfig.build?.minify ?? options.minify),
       terserOptions: { ...terserOptions(), ...userConfig.build?.terserOptions },
       rolldownOptions: { output: { assetFileNames: assetFileNames((original) => esCssFileName(ctx, original)) } },
     },
@@ -92,6 +105,18 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
     chunkFileNames: 'chunks/[name]-[hash].js',
     comments: { jsdoc: true },
   };
+
+  if (devBuild) {
+    // The dev server serves modules and stylesheets; only classic scripts are built, next to the
+    // production output they replace. WordPress has no jsxDEV runtime, hence the production JSX.
+    config.oxc = { jsx: { development: false } };
+    iifeEntries.forEach((entry, index) => {
+      const name = iifeEnvironmentName(entry, index);
+      ctx.iifeEnvironments.set(name, entry);
+      config.environments![name] = iifeEnvironment(entry, false, { ...output, assetFileNames: assetFileNames(() => `${entry.name}.css`) });
+    });
+    return config;
+  }
 
   ctx.finalEnvironment = iifeEntries.length > 0 ? iifeEnvironmentName(iifeEntries.at(-1)!, iifeEntries.length - 1) : CLIENT_ENVIRONMENT;
   config.environments![CLIENT_ENVIRONMENT] = {

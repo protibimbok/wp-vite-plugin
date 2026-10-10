@@ -4,7 +4,7 @@ import type { ChunkDeps, EntryDeps, WPViteContext } from '../context.js';
 import type { BlockEntrySource } from '../discovery/entries.js';
 import { toPosix } from '../discovery/names.js';
 import { phpFile, type PhpValue } from '../php/serialize.js';
-import type { ContextHolder } from './config.js';
+import { applyProdBuild, type ContextHolder } from './config.js';
 
 export const MANIFEST_PHP_FILE = 'wp-vite.php';
 export const MANIFEST_JSON_FILE = 'wp-vite.json';
@@ -61,7 +61,7 @@ export function blocksRoot(relDirs: string[]): string | null {
 export function manifestPlugin(holder: ContextHolder): Plugin {
   return {
     name: 'wp-vite:manifest',
-    apply: 'build',
+    apply: applyProdBuild,
     enforce: 'post',
 
     // Every environment emits the manifest with what has been built so far; the last one wins.

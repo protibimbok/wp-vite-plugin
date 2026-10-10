@@ -18,7 +18,7 @@ export function refreshPreamblePlugin(holder: ContextHolder): Plugin {
     transform(code, id) {
       if (!refresh || (this.environment?.name ?? 'client') !== 'client') return null;
       const entry = holder.get().discovery.entries.find((e) => normalizePath(e.file) === id);
-      if (!entry || entry.format === 'css') return null;
+      if (entry?.format !== 'es') return null;
       const s = new MagicString(code);
       s.prepend(`import ${JSON.stringify(REFRESH_PREAMBLE_ID)};\n`);
       return { code: s.toString(), map: s.generateMap({ hires: true, source: id }) };
