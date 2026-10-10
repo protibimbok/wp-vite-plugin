@@ -5,7 +5,7 @@ import { globalExpression } from './rewrite.js';
 import { rewriteExternals, type ExternalDeps } from './rewrite.js';
 
 const VIRTUAL_PREFIX = '\0wp-vite:external:';
-const SCRIPT_RE = /\.(?:m|c)?[jt]sx?(?:$|\?)/;
+const SCRIPT_RE = /\.(?:m|c)?[jt]sx?(?:$|\?)|^\/@wp-vite\//;
 
 export function externalsPlugin(holder: ContextHolder): Plugin {
   return {
@@ -48,7 +48,9 @@ export function externalsPlugin(holder: ContextHolder): Plugin {
         const result = rewriteExternals(code, id, (request) => ctx.classify(request, format));
         if (!result) return null;
         setRecord(ctx, environment, id, result.deps);
-        return result.map ? { code: result.code, map: result.map } : null;
+        if (!result.map) return null;
+        // Virtual modules have no source file for a map to point at.
+        return { code: result.code, map: id.startsWith('/@wp-vite/') ? { mappings: '' } : result.map };
       },
     },
   };

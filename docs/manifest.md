@@ -103,3 +103,35 @@ interface ManifestChunk {             // direct dependencies of one shared chunk
 script module, so they never appear in the `.asset.php` of an ESM entry; the PHP package enqueues
 them from the manifest instead. Entries referenced by a block `viewScriptModule` fail the build
 when they have classic deps (`moduleClassicDeps: 'error'`).
+
+## Hot file (`build/.wp-vite/hot.json`)
+
+Written when the dev server starts listening and removed when it closes (including SIGINT/SIGTERM/
+SIGHUP). Its presence is what switches the PHP package to dev mode. `hot: false` disables it.
+
+```jsonc
+{
+  "origin": "http://localhost:5173",       // dev server origin, no trailing slash
+  "srcDir": "src",                         // relative to the Vite root (the plugin directory)
+  "refresh": false,                        // true when a `vite:react-refresh` plugin is active
+  "entries": {
+    "blocks/basic/index": {
+      "url": "http://localhost:5173/src/blocks/basic/index.tsx",
+      "src": "src/blocks/basic/index.tsx",
+      "format": "iife",                    // 'es' | 'iife' | 'css'; everything is served as ESM in dev
+      "scripts": [],                       // classic handles, filled by the dev crawl
+      "modules": [],                       // script module ids, filled by the dev crawl
+      "styles": []                         // dev URLs of imported stylesheets, filled by the dev crawl
+    }
+  },
+  "blocks": [{ "name": "fixture/basic", "dir": "src/blocks/basic" }]
+}
+```
+
+Dev-only URLs on the dev server origin:
+
+- `/@wp-vite/react-refresh-preamble`: the React Fast Refresh preamble as a module (empty without
+  `vite:react-refresh`); must run before any entry.
+- `/@wp-vite/wp-module/<id>`: `export * from "<id>"`, served outside Vite's transform pipeline so the
+  bare id resolves through WordPress's import map. Imports of module externals are rewritten to it.
+- `/@wp-vite/jsx-dev-runtime`: `jsxDEV` shim over `ReactJSXRuntime` (dev JSX uses `react/jsx-dev-runtime`).

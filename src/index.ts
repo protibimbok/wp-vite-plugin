@@ -5,6 +5,8 @@ import { copyPlugin } from './build/copy.js';
 import { cssOutputPlugin, cssSplitPlugin } from './build/css-split.js';
 import { manifestPlugin } from './build/manifest.js';
 import { rtlPlugin } from './build/rtl.js';
+import { devServerPlugin } from './dev/server.js';
+import { devVirtualPlugin } from './dev/virtual.js';
 import { i18nPlugin } from './build/i18n.js';
 import { externalsPlugin } from './externals/plugin.js';
 import type { WPViteOptions } from './options.js';
@@ -17,6 +19,7 @@ export type { WPViteContext, EntryDeps, ChunkDeps } from './context.js';
 export type { WPViteManifest, ManifestEntry, ManifestBlock } from './build/manifest.js';
 export type { EntryDependencies } from './build/deps.js';
 export type { ExternalDeps, RewriteResult } from './externals/rewrite.js';
+export type { HotFile, HotFileEntry } from './dev/hot-file.js';
 export { WPViteError } from './errors.js';
 
 export function wpVite(options: WPViteOptions = {}): Plugin[] {
@@ -25,6 +28,8 @@ export function wpVite(options: WPViteOptions = {}): Plugin[] {
     configPlugin(options, holder),
     i18nPlugin(),
     externalsPlugin(holder),
+    devVirtualPlugin(holder),
+    devServerPlugin(holder),
     cssSplitPlugin(holder),
     cssOutputPlugin(holder),
     rtlPlugin(holder),
