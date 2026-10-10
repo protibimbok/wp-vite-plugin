@@ -106,7 +106,8 @@ when they have classic deps (`moduleClassicDeps: 'error'`).
 
 ## Hot file (`build/.wp-vite/hot.json`)
 
-Written when the dev server starts listening and removed when it closes (including SIGINT/SIGTERM/
+Written once the dev server is listening *and* the dependency crawl has finished (so WordPress never
+sees a dev-mode entry without its deps), removed when the server closes (including SIGINT/SIGTERM/
 SIGHUP). Its presence is what switches the PHP package to dev mode. `hot: false` disables it.
 
 ```jsonc
@@ -119,19 +120,31 @@ SIGHUP). Its presence is what switches the PHP package to dev mode. `hot: false`
       "url": "http://localhost:5173/src/blocks/basic/index.tsx",
       "src": "src/blocks/basic/index.tsx",
       "format": "iife",                    // 'es' | 'iife' | 'css'; everything is served as ESM in dev
-      "scripts": [],                       // classic handles, filled by the dev crawl
-      "modules": [],                       // script module ids, filled by the dev crawl
-      "styles": []                         // dev URLs of imported stylesheets, filled by the dev crawl
+      "scripts": ["react-jsx-runtime", "wp-blocks", "wp-i18n"],  // classic handles, whole module graph
+      "modules": ["@wordpress/a11y"],      // script module ids, static and dynamic imports alike
+      "styles": ["http://localhost:5173/src/blocks/basic/editor.scss"]  // stylesheets imported by scripts
     }
   },
   "blocks": [{ "name": "fixture/basic", "dir": "src/blocks/basic" }]
 }
 ```
 
+- `scripts`/`modules` are the union over every module reachable from the entry (static and dynamic
+  imports, pre-bundled deps included). Dynamic module imports are not marked: WordPress registers all
+  of them as static deps in dev, which costs a `modulepreload` at most.
+- `styles` lists the dev URLs of stylesheets imported from scripts (`?inline`/`?url`/`?raw` excluded).
+  Vite's CSS modules inject their `<style>` tags themselves, so these are informational, e.g. for
+  mirroring styles into the block editor canvas iframe. Stylesheet entries (`format: 'css'`) have
+  empty deps; their `url` is served as CSS directly and can be enqueued as a `<link>`.
+- On `hotUpdate` the crawl runs again. When any entry's deps (or the entry list, after a `block.json`
+  change re-runs discovery) differ, the hot file is rewritten and a `full-reload` is sent instead of
+  Vite's module update; otherwise Vite's update goes through untouched. A module that fails to
+  transform keeps its entry's previous deps.
+
 Dev-only URLs on the dev server origin:
 
 - `/@wp-vite/react-refresh-preamble`: the React Fast Refresh preamble as a module (empty without
-  `vite:react-refresh`); must run before any entry.
+  `vite:react-refresh`); when refresh is active every script entry imports it first.
 - `/@wp-vite/wp-module/<id>`: `export * from "<id>"`, served outside Vite's transform pipeline so the
   bare id resolves through WordPress's import map. Imports of module externals are rewritten to it.
 - `/@wp-vite/jsx-dev-runtime`: `jsxDEV` shim over `ReactJSXRuntime` (dev JSX uses `react/jsx-dev-runtime`).

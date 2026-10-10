@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { WPViteContext } from '../context.js';
 import { toPosix } from '../discovery/names.js';
 import type { EntryFormat } from '../options.js';
+import type { DevDeps } from './crawl.js';
 
 export interface HotFileEntry {
   url: string;
@@ -27,13 +28,14 @@ export function hotFilePath(ctx: WPViteContext): string {
   return path.join(ctx.options.outDir, HOT_FILE);
 }
 
-export function createHotFile(ctx: WPViteContext, origin: string, refresh: boolean): HotFile {
+export function createHotFile(ctx: WPViteContext, origin: string, refresh: boolean, deps?: DevDeps): HotFile {
   const { root, srcDir } = ctx.options;
   const relative = (file: string) => toPosix(path.relative(root, file));
   const entries: Record<string, HotFileEntry> = {};
   for (const entry of ctx.discovery.entries) {
     const src = relative(entry.file);
-    entries[entry.name] = { url: `${origin}/${src}`, src, format: entry.format, scripts: [], modules: [], styles: [] };
+    const { scripts = [], modules = [], styles = [] } = deps?.get(entry.name) ?? {};
+    entries[entry.name] = { url: `${origin}/${src}`, src, format: entry.format, scripts, modules, styles };
   }
   return {
     origin,
