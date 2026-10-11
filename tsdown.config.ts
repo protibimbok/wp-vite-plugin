@@ -2,21 +2,13 @@ import { defineConfig } from 'tsdown';
 
 export default defineConfig([
   {
-    entry: { index: 'src/index.ts' },
+    // One config so the CLI shares the plugin's chunks (and so its WPViteError class) with index.js.
+    entry: { index: 'src/index.ts', 'cli/index': 'src/cli/index.ts' },
     format: 'esm',
     platform: 'node',
     fixedExtension: false,
     dts: true,
     clean: true,
-    deps: { neverBundle: ['vite'] },
-  },
-  {
-    entry: { 'cli/index': 'src/cli/index.ts' },
-    format: 'esm',
-    platform: 'node',
-    fixedExtension: false,
-    dts: false,
-    clean: false,
     deps: { neverBundle: ['vite'] },
   },
   {

@@ -43,9 +43,11 @@ export function devServerPlugin(holder: ContextHolder, freshPlugins: () => Plugi
   const publish = (hot: HotFile) => {
     if (!state?.hot || state.closed) return;
     const { file } = state.hot;
+    const first = !state.hot.current;
     state.hot.current = hot;
     writeHotFile(file, hot);
     cleanup ??= installCleanup(() => removeHotFile(file));
+    if (first) state.server.config.logger.info(`[wp-vite] hot file written, WordPress now uses the dev server`, { timestamp: true });
   };
 
   // Each IIFE environment rebuilds on its own; one reload covers a change shared between them.

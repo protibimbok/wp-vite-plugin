@@ -61,18 +61,19 @@ export function configPlugin(rawOptions: WPViteOptions, holder: ContextHolder): 
       const discovery = await discoverEntries(options);
       const ctx = createContext(options, discovery, env.command === 'serve');
       holder.ctx = ctx;
-      return buildConfig(ctx, userConfig, env);
+      return buildConfig(holder, ctx, userConfig, env);
     },
   };
 }
 
-function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv): UserConfig {
+function buildConfig(holder: ContextHolder, ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv): UserConfig {
   const { options, discovery } = ctx;
   // Stylesheet entries (block.json style fields) build in the client environment with the ESM ones.
   const clientEntries = discovery.entries.filter((e) => e.format !== 'iife');
   const iifeEntries = discovery.entries.filter((e) => e.format === 'iife');
   const isBuild = env.command === 'build';
   const devBuild = isBuild && isDevBuild(userConfig);
+  const watching = isBuild && !devBuild && !!userConfig.build?.watch;
 
   const config: UserConfig = {
     appType: 'custom',
@@ -121,7 +122,7 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
   ctx.finalEnvironment = iifeEntries.length > 0 ? iifeEnvironmentName(iifeEntries.at(-1)!, iifeEntries.length - 1) : CLIENT_ENVIRONMENT;
   config.environments![CLIENT_ENVIRONMENT] = {
     build: {
-      emptyOutDir: true,
+      emptyOutDir: !watching,
       cssCodeSplit: true,
       rolldownOptions: {
         input: Object.fromEntries(clientEntries.map((e) => [e.name, e.file])),
@@ -135,13 +136,14 @@ function buildConfig(ctx: WPViteContext, userConfig: UserConfig, env: ConfigEnv)
   iifeEntries.forEach((entry, index) => {
     const name = iifeEnvironmentName(entry, index);
     ctx.iifeEnvironments.set(name, entry);
-    const emptyOutDir = clientEntries.length === 0 && index === 0;
+    const emptyOutDir = clientEntries.length === 0 && index === 0 && !watching;
     const iifeOutput = { ...output, assetFileNames: assetFileNames(() => `${entry.name}.css`) };
     config.environments![name] = iifeEnvironment(entry, emptyOutDir, iifeOutput);
   });
 
   if (!userConfig.builder) {
-    config.builder = { buildApp: (builder) => buildApp(builder, ctx, clientEntries.length > 0) };
+    // Inline plugins re-run this hook per environment; the hooks read the holder, so must buildApp.
+    config.builder = { buildApp: (builder) => buildApp(builder, holder.get(), clientEntries.length > 0) };
   }
   return config;
 }

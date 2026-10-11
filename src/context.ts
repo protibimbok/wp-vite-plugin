@@ -4,6 +4,7 @@ import { JSX_DEV_RUNTIME_REQUEST } from './dev/virtual.js';
 import { createClassifier, type Classify } from './externals/classify.js';
 import type { ExternalDeps } from './externals/rewrite.js';
 import type { ScriptFormat, ResolvedOptions } from './options.js';
+import type { Watcher } from './build/watch.js';
 
 export interface EntryDeps extends EntryDependencies {
   name: string;
@@ -29,6 +30,8 @@ export interface WPViteContext {
   chunks: Map<string, ChunkDeps>;
   iifeEnvironments: Map<string, Entry>;
   finalEnvironment: string;
+  // Rolldown watchers of a `build --watch` run, one per environment.
+  watchers: Watcher[];
   styleFiles: Set<string>;
   isDev: boolean;
   devOrigin: string | undefined;
@@ -49,6 +52,7 @@ export function createContext(options: ResolvedOptions, discovery: Discovery, is
     chunks: new Map(),
     iifeEnvironments,
     finalEnvironment: '',
+    watchers: [],
     styleFiles: new Set(),
     isDev,
     devOrigin: undefined,

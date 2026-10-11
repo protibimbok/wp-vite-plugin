@@ -1,5 +1,6 @@
-import { createBuilder, mergeConfig, type InlineConfig, type Plugin, type PluginOption, type Rolldown, type ViteDevServer } from 'vite';
+import { createBuilder, mergeConfig, type InlineConfig, type Plugin, type PluginOption, type ViteDevServer } from 'vite';
 import { DEV_BUILD_PLUGIN, type ContextHolder } from '../build/config.js';
+import { isWatcher, watchBuilds, type Watcher } from '../build/watch.js';
 
 export interface DevBuild {
   // Settles once every environment has finished (or failed) its first build.
@@ -15,13 +16,13 @@ export async function startDevBuild(server: ViteDevServer, freshPlugins: () => P
   const holder = builder.config.plugins.find((plugin) => plugin.name === 'wp-vite:config')?.api as ContextHolder | undefined;
   if (!holder) throw new Error('wp-vite: the dev build config does not register wpVite()');
 
-  const watchers: Rolldown.RolldownWatcher[] = [];
+  const watchers: Watcher[] = [];
   const settled: Promise<void>[] = [];
   for (const name of holder.get().iifeEnvironments.keys()) {
     const result = await builder.build(builder.environments[name]!);
     if (!isWatcher(result)) continue;
     watchers.push(result);
-    settled.push(watch(result, onRebuilt));
+    settled.push(watchBuilds(result, onRebuilt));
   }
   return {
     ready: Promise.all(settled).then(() => undefined),
@@ -29,20 +30,6 @@ export async function startDevBuild(server: ViteDevServer, freshPlugins: () => P
       await Promise.all(watchers.map((watcher) => watcher.close()));
     },
   };
-}
-
-// The first build is part of starting up; only rebuilds mean something changed for open pages.
-function watch(watcher: Rolldown.RolldownWatcher, onRebuilt: () => void): Promise<void> {
-  return new Promise((resolve) => {
-    let initial = true;
-    watcher.on('event', (event) => {
-      if (event.code === 'BUNDLE_END' && !initial) onRebuilt();
-      if (event.code === 'END' || event.code === 'ERROR') {
-        initial = false;
-        resolve();
-      }
-    });
-  });
 }
 
 async function devBuildConfig(server: ViteDevServer, freshPlugins: () => Plugin[]): Promise<InlineConfig> {
@@ -67,8 +54,4 @@ async function flatten(option: PluginOption): Promise<Plugin[]> {
   const resolved = await option;
   if (Array.isArray(resolved)) return (await Promise.all(resolved.map(flatten))).flat();
   return resolved && typeof resolved === 'object' && 'name' in resolved ? [resolved] : [];
-}
-
-function isWatcher(result: unknown): result is Rolldown.RolldownWatcher {
-  return !!result && typeof result === 'object' && 'on' in result && typeof result.on === 'function';
 }
