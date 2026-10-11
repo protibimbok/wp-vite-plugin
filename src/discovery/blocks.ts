@@ -45,7 +45,7 @@ export function fileFieldValues(json: Record<string, unknown>, field: string): s
     .map((v) => v.slice('file:'.length));
 }
 
-async function readBlockJson(file: string): Promise<Record<string, unknown>> {
+export async function readBlockJson(file: string): Promise<Record<string, unknown>> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(await fs.readFile(file, 'utf8'));

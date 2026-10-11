@@ -36,8 +36,15 @@ export function builtBlockJson(json: Record<string, unknown>): Record<string, un
   return out;
 }
 
+export interface BlocksManifestInput {
+  dir: string;
+  name: string;
+  json: Record<string, unknown>;
+}
+
 // Keyed by block directory name, which is what WP_Block_Metadata_Registry looks blocks up by.
-export function blocksManifest(blocks: BlockMeta[]): Record<string, Record<string, unknown>> {
+// `json` is the built block.json (file: fields already pointing at build output).
+export function blocksManifest(blocks: BlocksManifestInput[]): Record<string, Record<string, unknown>> {
   const manifest: Record<string, Record<string, unknown>> = {};
   const owners = new Map<string, string>();
   for (const block of blocks) {
@@ -50,7 +57,7 @@ export function blocksManifest(blocks: BlockMeta[]): Record<string, Record<strin
       );
     }
     owners.set(key, block.name);
-    manifest[key] = builtBlockJson(block.json);
+    manifest[key] = block.json;
   }
   return manifest;
 }
@@ -65,7 +72,8 @@ export async function copyFiles(options: ResolvedOptions, blocks: BlockMeta[]): 
     files.push({ fileName: toPosix(path.relative(options.srcDir, file)), source: await fs.readFile(file) });
   }
   if (options.blocksManifest && blocks.length > 0) {
-    files.push({ fileName: BLOCKS_MANIFEST_FILE, source: phpFile(blocksManifest(blocks) as PhpValue, true) });
+    const built = blocks.map((block) => ({ ...block, json: builtBlockJson(block.json) }));
+    files.push({ fileName: BLOCKS_MANIFEST_FILE, source: phpFile(blocksManifest(built) as PhpValue, true) });
   }
   return files;
 }

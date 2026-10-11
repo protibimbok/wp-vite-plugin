@@ -1,0 +1,5 @@
+{
+  "src/shared/badge.tsx": ["build/admin/index.js", "build/chunks/badge-abc.js"],
+  "build/admin/index.js": "build/admin/index.js",
+  "build/frontend/index.js": "build/frontend/index.js"
+}

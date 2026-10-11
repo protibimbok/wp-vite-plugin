@@ -1,0 +1,5 @@
+{
+  "name": "plugin-zip",
+  "private": true,
+  "files": ["out", "vendor/**", "plugin-zip.php", "readme.txt", ".distignore"]
+}

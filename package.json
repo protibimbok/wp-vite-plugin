@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@types/estree": "^1.0.9",
+    "@types/gettext-parser": "^9.0.0",
     "@types/node": "^26.6.4",
     "sass-embedded": "^1.105.1",
     "terser": "^5.51.2",
@@ -49,6 +50,8 @@
     "@rollup/pluginutils": "^5.4.0",
     "cac": "^7.0.1",
     "estree-walker": "^3.0.3",
+    "fflate": "^0.8.3",
+    "gettext-parser": "^9.1.1",
     "is-reference": "^3.0.3",
     "lightningcss": "^1.33.0",
     "magic-string": "^1.4.3",

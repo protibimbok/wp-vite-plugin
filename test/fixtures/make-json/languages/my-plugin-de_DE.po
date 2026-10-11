@@ -1,0 +1,44 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: My Plugin 1.0\n"
+"PO-Revision-Date: 2026-01-02 03:04+0000\n"
+"Language: de_DE\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: WP-CLI 2.12.0\n"
+
+#. translators: greeting on the admin page
+#: build/admin/index.js:1
+#: inc/Plugin.php:42
+msgid "Hello"
+msgstr "Hallo"
+
+#: build/admin/index.js:1 build/frontend/index.js:1
+msgctxt "verb"
+msgid "Post"
+msgstr "Veröffentlichen"
+
+#: build/frontend/index.js:1
+msgid "%d item"
+msgid_plural "%d items"
+msgstr[0] "%d Element"
+msgstr[1] "%d Elemente"
+
+#: build/admin/index.js:1
+msgid "Untranslated"
+msgstr ""
+
+#: build/admin/index.js:1
+#, fuzzy
+msgid "Fuzzy"
+msgstr "Unscharf"
+
+#: inc/Plugin.php:7
+msgid "PHP only"
+msgstr "Nur PHP"
+
+#: src/shared/badge.tsx:3
+msgid "Badge"
+msgstr "Abzeichen"

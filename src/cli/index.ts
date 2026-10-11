@@ -1,11 +1,15 @@
 #!/usr/bin/env node
+import path from 'node:path';
 import { inspect } from 'node:util';
 import { cac } from 'cac';
 import pc from 'picocolors';
 import { createLogger, type LogLevel } from 'vite';
 import { version } from '../../package.json';
 import { WPViteError } from '../errors.js';
+import { buildBlocksManifest } from './blocks-manifest.js';
 import { runBuild } from './build.js';
+import { makeJson } from './make-json.js';
+import { pluginZip } from './plugin-zip.js';
 import { runStart } from './start.js';
 
 interface GlobalFlags {
@@ -54,6 +58,55 @@ cli
     });
   });
 
+cli
+  .command('plugin-zip [root]', 'zip the plugin for distribution')
+  .option('--root-folder [name]', '[string] folder the files sit in inside the zip (default: the plugin directory name)')
+  .option('--no-root-folder', '[boolean] put the files at the root of the zip')
+  .option('-o, --output <file>', '[string] zip file to write (default: <name>.zip in the plugin directory)')
+  .action(async (root: string | undefined, flags: GlobalFlags & { rootFolder?: string | boolean; output?: string }) => {
+    lastWins(flags);
+    await run('plugin-zip', flags, async () => {
+      const result = await pluginZip({ ...(root !== undefined && { root }), ...(flags.rootFolder !== undefined && { rootFolder: flags.rootFolder }), ...(flags.output !== undefined && { output: flags.output }) });
+      createLogger(flags.logLevel).info(`${pc.green('✓')} ${pc.cyan(relative(result.file))} ${pc.dim(`(${count(result.files.length, 'file', 'files')}${result.folder ? ` in ${result.folder}/` : ''})`)}`);
+    });
+  });
+
+cli
+  .command('build-blocks-manifest [root]', 'regenerate blocks-manifest.php from the built block.json files')
+  .option('--input <dir>', '[string] directory to scan for block.json files (default: build)')
+  .option('--output <file>', '[string] manifest file to write (default: <input>/blocks-manifest.php)')
+  .action(async (root: string | undefined, flags: GlobalFlags & { input?: string; output?: string }) => {
+    lastWins(flags);
+    await run('build-blocks-manifest', flags, async () => {
+      const result = await buildBlocksManifest({ ...(root !== undefined && { root }), ...(flags.input !== undefined && { input: flags.input }), ...(flags.output !== undefined && { output: flags.output }) });
+      createLogger(flags.logLevel).info(`${pc.green('✓')} ${pc.cyan(relative(result.file))} ${pc.dim(`(${count(result.blocks.length, 'block', 'blocks')})`)}`);
+    });
+  });
+
+cli
+  .command('make-json <source> [destination]', 'convert .po files to JSON for script translations')
+  .option('--domain <domain>', '[string] text domain for the file names (default: the .po file name)')
+  .option('--purge', '[boolean] remove the strings only scripts reference from the .po files')
+  .option('--pretty-print', '[boolean] indent the JSON')
+  .option('--use-map <file>', '[string] JSON file mapping referenced source paths to shipped script paths')
+  .action(async (source: string, destination: string | undefined, flags: GlobalFlags & { domain?: string; purge?: boolean; prettyPrint?: boolean; useMap?: string }) => {
+    lastWins(flags);
+    await run('make-json', flags, async () => {
+      const result = await makeJson({
+        source,
+        ...(destination !== undefined && { destination }),
+        ...(flags.domain !== undefined && { domain: flags.domain }),
+        ...(flags.purge !== undefined && { purge: flags.purge }),
+        ...(flags.prettyPrint !== undefined && { prettyPrint: flags.prettyPrint }),
+        ...(flags.useMap !== undefined && { useMap: flags.useMap }),
+      });
+      const logger = createLogger(flags.logLevel);
+      for (const file of result.files) logger.info(`${pc.green('✓')} ${pc.cyan(relative(file))}`);
+      if (result.files.length === 0) logger.warn(pc.yellow('No translated strings referenced by scripts were found.'));
+      for (const file of result.purged) logger.info(`${pc.dim('purged')} ${pc.cyan(relative(file))}`);
+    });
+  });
+
 cli.help();
 cli.version(version);
 cli.parse();
@@ -65,6 +118,15 @@ function pick(flags: GlobalFlags): GlobalFlags {
     ...(flags.logLevel !== undefined && { logLevel: flags.logLevel }),
     ...(flags.clearScreen !== undefined && { clearScreen: flags.clearScreen }),
   };
+}
+
+function relative(file: string): string {
+  const rel = path.relative(process.cwd(), file);
+  return rel.startsWith('..') ? file : rel.split(path.sep).join('/') || '.';
+}
+
+function count(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`;
 }
 
 // cac collects a repeated flag into an array; Vite's CLI keeps the last value too.
